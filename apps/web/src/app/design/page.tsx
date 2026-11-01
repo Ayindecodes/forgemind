@@ -31,6 +31,17 @@ const colorGroups: { title: string; roles: TokenRole[] }[] = [
   { title: 'Glass', roles: ['glass', 'scrim'] },
 ];
 
+const typeScale = [
+  { token: 'text-2xl', className: 'text-2xl font-semibold' },
+  { token: 'text-xl', className: 'text-xl font-semibold' },
+  { token: 'text-lg', className: 'text-lg font-semibold' },
+  { token: 'text-md', className: 'text-md font-medium' },
+  { token: 'text-base', className: 'text-base' },
+  { token: 'text-sm', className: 'text-sm' },
+  { token: 'text-xs', className: 'text-xs' },
+  { token: 'text-code', className: 'font-mono text-code' },
+];
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
@@ -190,6 +201,19 @@ export default function DesignPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      </Section>
+
+      <Section title="Type">
+        <div className="flex flex-col gap-2">
+          {typeScale.map(({ token, className }) => (
+            <div key={token} className="flex items-baseline gap-4">
+              <span className="w-20 shrink-0 font-mono text-xs text-fg-secondary">
+                {token}
+              </span>
+              <span className={className}>Investigate the failing build</span>
+            </div>
+          ))}
         </div>
       </Section>
     </main>
