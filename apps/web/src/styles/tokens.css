@@ -27,4 +27,8 @@
   --color-canvas: #0b0d10;
   --color-surface: #111419;
   --color-elevated: #171b21;
+
+  /* State layers, drawn over any surface */
+  --color-hover: rgb(255 255 255 / 0.05);
+  --color-pressed: rgb(255 255 255 / 0.08);
 }
