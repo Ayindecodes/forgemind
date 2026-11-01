@@ -41,4 +41,12 @@
   --color-line-subtle: rgb(255 255 255 / 0.06);
   --color-line: rgb(255 255 255 / 0.1);
   --color-line-control: #707988;
+
+  /* Accent */
+  --color-accent: #6ea8fe;
+  --color-accent-hover: #a6c8ff;
+  --color-on-accent: #0b0d10;
+  --color-accent-fg: #6ea8fe;
+  --color-accent-subtle: rgb(110 168 254 / 0.14);
+  --color-focus: #a6c8ff;
 }
