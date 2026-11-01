@@ -96,4 +96,7 @@
 
   --tracking-normal: 0;
   --tracking-wide: 0.02em;
+
+  /* Spacing: every Tailwind spacing utility is a multiple of this 4px step */
+  --spacing: 0.25rem;
 }
