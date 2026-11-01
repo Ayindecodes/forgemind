@@ -20,7 +20,7 @@ export default defineConfig({
     {
       command: `pnpm build && pnpm start --port ${webPort}`,
       url: webUrl,
-      env: { NEXT_PUBLIC_API_URL: apiUrl },
+      env: { ENABLE_DESIGN_PAGE: '1', NEXT_PUBLIC_API_URL: apiUrl },
       timeout: 180_000,
     },
   ],
