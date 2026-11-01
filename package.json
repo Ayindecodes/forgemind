@@ -1,0 +1,25 @@
+{
+  "name": "forgemind",
+  "private": true,
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @forgemind/web --filter @forgemind/dev-api dev",
+    "build": "pnpm --filter @forgemind/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @forgemind/web test:e2e",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "eslint": "^10.14.0",
+    "eslint-config-next": "^16.4.3",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3"
+  }
+}
