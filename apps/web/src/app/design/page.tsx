@@ -5,6 +5,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
+import { ForgeMark, Logo } from '@/components/brand/logo';
 import {
   auditContrast,
   readColorTokens,
@@ -41,6 +42,8 @@ const typeScale = [
   { token: 'text-xs', className: 'text-xs' },
   { token: 'text-code', className: 'font-mono text-code' },
 ];
+
+const markSizes = [16, 20, 24, 32, 48];
 
 const radii = [
   { token: 'rounded-sm', className: 'rounded-sm' },
@@ -103,6 +106,28 @@ export default function DesignPage() {
         </div>
         <ThemeSwitcher />
       </header>
+
+      <Section title="Brand">
+        <div className="flex flex-col gap-6 rounded-lg border border-line bg-surface p-6">
+          <div className="flex flex-wrap items-end gap-8">
+            {markSizes.map((size) => (
+              <figure key={size} className="flex flex-col gap-2">
+                <ForgeMark size={size} data-testid={`mark-${size}`} />
+                <figcaption className="font-mono text-xs text-fg-secondary">
+                  {size}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-end gap-8">
+            <Logo size={16} />
+            <Logo size={24} />
+            <span className="text-accent-fg">
+              <Logo size={24} />
+            </span>
+          </div>
+        </div>
+      </Section>
 
       <Section title="Color">
         <div className="overflow-x-auto rounded-lg border border-line bg-surface">
