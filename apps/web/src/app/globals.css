@@ -14,4 +14,10 @@
     font-size: var(--text-base);
     line-height: var(--text-base--line-height);
   }
+
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-line);
+  }
 }
