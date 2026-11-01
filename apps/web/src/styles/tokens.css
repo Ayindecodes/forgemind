@@ -36,4 +36,9 @@
   --color-fg: #f5f7fa;
   --color-fg-secondary: #a1a8b3;
   --color-fg-muted: #8d96a3;
+
+  /* Lines. Control lines mark interactive edges, so they must meet 3:1. */
+  --color-line-subtle: rgb(255 255 255 / 0.06);
+  --color-line: rgb(255 255 255 / 0.1);
+  --color-line-control: #707988;
 }
