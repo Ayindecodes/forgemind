@@ -49,4 +49,14 @@
   --color-accent-fg: #6ea8fe;
   --color-accent-subtle: rgb(110 168 254 / 0.14);
   --color-focus: #a6c8ff;
+
+  /* Semantic */
+  --color-success-fg: #4cc38a;
+  --color-success-subtle: rgb(76 195 138 / 0.12);
+  --color-warning-fg: #f0b35a;
+  --color-warning-subtle: rgb(240 179 90 / 0.12);
+  --color-error-fg: #f2877b;
+  --color-error-subtle: rgb(242 135 123 / 0.12);
+  --color-info-fg: #7fb8e6;
+  --color-info-subtle: rgb(127 184 230 / 0.12);
 }
