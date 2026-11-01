@@ -50,6 +50,12 @@ const radii = [
   { token: 'rounded-2xl', className: 'rounded-2xl' },
 ];
 
+const shadows = [
+  { token: 'shadow-sm', className: 'shadow-sm' },
+  { token: 'shadow-md', className: 'shadow-md' },
+  { token: 'shadow-lg', className: 'shadow-lg' },
+];
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
@@ -231,6 +237,21 @@ export default function DesignPage() {
             <div key={token} className="flex flex-col gap-1.5">
               <div
                 className={`size-16 border border-line bg-elevated ${className}`}
+              />
+              <span className="font-mono text-xs text-fg-secondary">
+                {token}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Elevation">
+        <div className="flex flex-wrap gap-6">
+          {shadows.map(({ token, className }) => (
+            <div key={token} className="flex flex-col gap-2">
+              <div
+                className={`h-16 w-28 rounded-lg border border-line bg-elevated ${className}`}
               />
               <span className="font-mono text-xs text-fg-secondary">
                 {token}
