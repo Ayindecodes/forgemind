@@ -179,4 +179,9 @@
   --color-glass-line: rgb(20 24 30 / 0.1);
   --color-glass-highlight: rgb(255 255 255 / 0.7);
   --color-scrim: rgb(20 24 30 / 0.28);
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgb(20 24 30 / 0.06);
+  --shadow-md: 0 1px 3px rgb(20 24 30 / 0.06), 0 4px 12px rgb(20 24 30 / 0.08);
+  --shadow-lg: 0 2px 6px rgb(20 24 30 / 0.06), 0 12px 32px rgb(20 24 30 / 0.12);
 }
