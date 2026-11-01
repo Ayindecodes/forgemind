@@ -42,6 +42,14 @@ const typeScale = [
   { token: 'text-code', className: 'font-mono text-code' },
 ];
 
+const radii = [
+  { token: 'rounded-sm', className: 'rounded-sm' },
+  { token: 'rounded-md', className: 'rounded-md' },
+  { token: 'rounded-lg', className: 'rounded-lg' },
+  { token: 'rounded-xl', className: 'rounded-xl' },
+  { token: 'rounded-2xl', className: 'rounded-2xl' },
+];
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
@@ -212,6 +220,21 @@ export default function DesignPage() {
                 {token}
               </span>
               <span className={className}>Investigate the failing build</span>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Radii">
+        <div className="flex flex-wrap gap-4">
+          {radii.map(({ token, className }) => (
+            <div key={token} className="flex flex-col gap-1.5">
+              <div
+                className={`size-16 border border-line bg-elevated ${className}`}
+              />
+              <span className="font-mono text-xs text-fg-secondary">
+                {token}
+              </span>
             </div>
           ))}
         </div>
