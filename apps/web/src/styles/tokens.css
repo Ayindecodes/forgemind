@@ -31,4 +31,9 @@
   /* State layers, drawn over any surface */
   --color-hover: rgb(255 255 255 / 0.05);
   --color-pressed: rgb(255 255 255 / 0.08);
+
+  /* Text and icons */
+  --color-fg: #f5f7fa;
+  --color-fg-secondary: #a1a8b3;
+  --color-fg-muted: #8d96a3;
 }
