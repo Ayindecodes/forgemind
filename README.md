@@ -1,4 +1,4 @@
-# ForgeMind
+<img src="docs/brand/forgemind-logo.svg" alt="ForgeMind" height="36">
 
 Autonomous software engineering and repository intelligence platform.
 
