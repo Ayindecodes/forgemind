@@ -1,0 +1,30 @@
+/*
+ * Design tokens: the single source of truth for ForgeMind's visual language.
+ *
+ * The dark theme is the default. The light theme below overrides only what
+ * differs. Tailwind's default palette and scales are cleared, so utilities can
+ * only use the values defined here.
+ *
+ * contrast.test.ts reads the --color-* tokens directly from this file. Every
+ * color token needs a role in contrast.ts, so a new one can't skip the check.
+ */
+
+@theme static {
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --tracking-*: initial;
+  --leading-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --blur-*: initial;
+  --ease-*: initial;
+  --animate-*: initial;
+
+  /* Surfaces */
+  --color-canvas: #0b0d10;
+  --color-surface: #111419;
+  --color-elevated: #171b21;
+}
