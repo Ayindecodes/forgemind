@@ -59,4 +59,11 @@
   --color-error-subtle: rgb(242 135 123 / 0.12);
   --color-info-fg: #7fb8e6;
   --color-info-subtle: rgb(127 184 230 / 0.12);
+
+  /* Glass */
+  --color-glass: rgb(23 27 33 / 0.72);
+  --color-glass-strong: rgb(17 20 25 / 0.86);
+  --color-glass-line: rgb(255 255 255 / 0.1);
+  --color-glass-highlight: rgb(255 255 255 / 0.08);
+  --color-scrim: rgb(5 6 8 / 0.6);
 }
