@@ -45,6 +45,8 @@ const typeScale = [
 
 const markSizes = [16, 20, 24, 32, 48];
 
+const metrics = ['1,284', '907', '11,111', '48,290', '3,076'];
+
 const radii = [
   { token: 'rounded-sm', className: 'rounded-sm' },
   { token: 'rounded-md', className: 'rounded-md' },
@@ -253,6 +255,30 @@ export default function DesignPage() {
               <span className={className}>Investigate the failing build</span>
             </div>
           ))}
+        </div>
+      </Section>
+
+      <Section title="Numerals">
+        <p className="text-fg-secondary">
+          Tables and metrics use tabular figures so digits line up in columns.
+        </p>
+        <div className="flex gap-12">
+          <div className="flex flex-col items-end">
+            <span className="text-xs text-fg-secondary">Tabular</span>
+            {metrics.map((metric) => (
+              <span key={metric} className="text-lg tabular-nums">
+                {metric}
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-col items-end">
+            <span className="text-xs text-fg-secondary">Proportional</span>
+            {metrics.map((metric) => (
+              <span key={metric} className="text-lg">
+                {metric}
+              </span>
+            ))}
+          </div>
         </div>
       </Section>
 
