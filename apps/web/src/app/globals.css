@@ -20,4 +20,8 @@
   ::after {
     border-color: var(--color-line);
   }
+
+  ::selection {
+    background-color: var(--color-accent-subtle);
+  }
 }
