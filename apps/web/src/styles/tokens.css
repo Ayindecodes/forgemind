@@ -128,3 +128,55 @@
   --default-transition-duration: var(--duration-fast);
   --default-transition-timing-function: var(--ease-standard);
 }
+
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* Surfaces */
+  --color-canvas: #faf9f7;
+  --color-surface: #f4f3f0;
+  --color-elevated: #ffffff;
+
+  /* State layers, drawn over any surface */
+  --color-hover: rgb(20 24 30 / 0.04);
+  --color-pressed: rgb(20 24 30 / 0.07);
+
+  /* Text and icons */
+  --color-fg: #15181d;
+  --color-fg-secondary: #4a5260;
+  --color-fg-muted: #576070;
+
+  /* Lines */
+  --color-line-subtle: rgb(20 24 30 / 0.06);
+  --color-line: rgb(20 24 30 / 0.1);
+  --color-line-control: #747d8a;
+
+  /* Accent */
+  --color-accent: #1f5fdb;
+  --color-accent-hover: #1a50bc;
+  --color-on-accent: #ffffff;
+  --color-accent-fg: #1a52c0;
+  --color-accent-subtle: rgb(31 95 219 / 0.1);
+  --color-focus: #1f5fdb;
+
+  /* Semantic */
+  --color-success-fg: #0a6b45;
+  --color-success-subtle: rgb(14 122 80 / 0.1);
+  --color-warning-fg: #855300;
+  --color-warning-subtle: rgb(143 90 0 / 0.1);
+  --color-error-fg: #ad3526;
+  --color-error-subtle: rgb(194 64 47 / 0.1);
+  --color-info-fg: #1a5f96;
+  --color-info-subtle: rgb(31 106 165 / 0.1);
+
+  /* Glass */
+  --color-glass: rgb(255 255 255 / 0.72);
+  --color-glass-strong: rgb(255 255 255 / 0.88);
+  --color-glass-line: rgb(20 24 30 / 0.1);
+  --color-glass-highlight: rgb(255 255 255 / 0.7);
+  --color-scrim: rgb(20 24 30 / 0.28);
+}
