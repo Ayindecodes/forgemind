@@ -66,4 +66,34 @@
   --color-glass-line: rgb(255 255 255 / 0.1);
   --color-glass-highlight: rgb(255 255 255 / 0.08);
   --color-scrim: rgb(5 6 8 / 0.6);
+
+  /* Type */
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-md: 1rem;
+  --text-md--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.625rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.875rem;
+  --text-xl--letter-spacing: -0.01em;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 2.25rem;
+  --text-2xl--letter-spacing: -0.015em;
+  --text-code: 0.8125rem;
+  --text-code--line-height: 1.375rem;
+
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
 }
