@@ -139,7 +139,8 @@
     transition-timing-function: var(--ease-standard);
   }
 
-  .press:active {
+  .press:active,
+  .press[data-preview~='active'] {
     scale: var(--motion-press);
   }
 }
