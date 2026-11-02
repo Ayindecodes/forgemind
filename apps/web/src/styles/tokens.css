@@ -135,6 +135,9 @@
   --ease-enter: cubic-bezier(0, 0, 0.2, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 
+  --animate-spin: motion-spin 800ms linear infinite;
+  --animate-pulse: motion-pulse 1800ms var(--ease-standard) infinite;
+
   --default-transition-duration: var(--duration-fast);
   --default-transition-timing-function: var(--ease-standard);
 }
