@@ -15,6 +15,14 @@ export const durations = {
   slow: 0.28,
 } as const;
 
+/** Waits before something appears or disappears, in milliseconds. */
+export const timeouts = {
+  /** Tooltips wait so that passing the pointer over a control shows nothing. */
+  tooltip: 400,
+  /** Toasts stay long enough to read, then leave on their own. */
+  toast: 6000,
+} as const;
+
 type Bezier = [number, number, number, number];
 
 export const easings = {
