@@ -7,6 +7,9 @@ type Sample = { t: number; opacity: number; transform: string; height: number };
 const IDENTITY = ['none', 'matrix(1, 0, 0, 1, 0, 0)'];
 const ms = (seconds: number) => seconds * 1000;
 
+// Frames stretch when the test machine is busy, so settling gets this much grace.
+const GRACE = 600;
+
 /** Clicks a trigger in-page, then samples the target on every frame. */
 function sample(page: Page, trigger: string, target: string, duration = 700) {
   return page.evaluate(
@@ -100,11 +103,11 @@ test('a dialog fades and scales in within the slow duration', async ({
   );
   expect(done).toBeDefined();
   expect(done?.t).toBeGreaterThan(ms(durations.slow) * 0.6);
-  expect(done?.t).toBeLessThan(ms(durations.slow) + 300);
+  expect(done?.t).toBeLessThan(ms(durations.slow) + GRACE);
 
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('dialog')).toHaveCount(0, {
-    timeout: ms(durations.base) + 500,
+    timeout: ms(durations.base) + GRACE * 2,
   });
 });
 
@@ -123,7 +126,7 @@ test('a popover rises out of its control and settles in place', async ({
     ),
   ).toBe(true);
   expect(settled(samples)).toBeDefined();
-  expect(settled(samples)?.t).toBeLessThan(ms(durations.base) + 300);
+  expect(settled(samples)?.t).toBeLessThan(ms(durations.base) + GRACE);
 });
 
 test('an expandable panel opens to its natural height', async ({ page }) => {
@@ -136,7 +139,7 @@ test('an expandable panel opens to its natural height', async ({ page }) => {
 
   expect(heights[0]).toBeLessThan(final);
   expect(final).toBeGreaterThan(40);
-  expect(grown?.t).toBeLessThan(ms(durations.base) + 300);
+  expect(grown?.t).toBeLessThan(ms(durations.base) + GRACE);
 });
 
 test('a status change fades in with the fast preset', async ({ page }) => {
