@@ -2,7 +2,7 @@
 
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react';
 import { Toast as RadixToast } from 'radix-ui';
-import { useSyncExternalStore } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -39,6 +39,25 @@ const labels: Record<ToastTone, string> = {
 
 export function Toaster() {
   const toasts = useSyncExternalStore(subscribeToToasts, getToasts, getToasts);
+  const viewportRef = useRef<HTMLOListElement>(null);
+
+  const onClose = (id: number) => {
+    closeToast(id);
+    setTimeout(() => removeToast(id), durations.fast * 1000);
+
+    // Radix parks focus on the viewport when a focused toast closes, and its
+    // timers stay paused while focus is inside. Once nothing is left to read,
+    // give focus back to the page so later toasts can leave on their own.
+    const focused = document.activeElement;
+    const othersOpen = getToasts().some((item) => item.open);
+    if (
+      !othersOpen &&
+      focused instanceof HTMLElement &&
+      viewportRef.current?.contains(focused)
+    ) {
+      focused.blur();
+    }
+  };
 
   return (
     <RadixToast.Provider duration={timeouts.toast} swipeDirection="right">
@@ -53,9 +72,7 @@ export function Toaster() {
             data-tone={tone}
             type={tone === 'error' ? 'foreground' : 'background'}
             onOpenChange={(next) => {
-              if (next) return;
-              closeToast(id);
-              setTimeout(() => removeToast(id), durations.fast * 1000);
+              if (!next) onClose(id);
             }}
             className="material-popover relative flex items-start gap-3 p-3 pr-9 text-sm [--motion-shift-y:var(--motion-shift)] data-[state=closed]:motion-fade-out data-[state=open]:motion-popover-in"
           >
@@ -98,7 +115,10 @@ export function Toaster() {
           </RadixToast.Root>
         );
       })}
-      <RadixToast.Viewport className="fixed right-4 bottom-4 z-60 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none" />
+      <RadixToast.Viewport
+        ref={viewportRef}
+        className="fixed right-4 bottom-4 z-60 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none"
+      />
     </RadixToast.Provider>
   );
 }
