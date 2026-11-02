@@ -84,3 +84,43 @@
       var(--motion-shift-y, calc(-1 * var(--motion-shift)));
   }
 }
+
+@layer components {
+  /* Small interactions */
+  .motion-fade-in {
+    animation: motion-fade-in var(--duration-fast) var(--ease-enter) both;
+  }
+
+  .motion-fade-out {
+    animation: motion-fade-out var(--duration-fast) var(--ease-exit) both;
+  }
+
+  /* Dialogs and overlays */
+  .motion-panel-in {
+    animation: motion-scale-in var(--duration-slow) var(--ease-enter) both;
+  }
+
+  .motion-panel-out {
+    animation: motion-scale-out var(--duration-base) var(--ease-exit) both;
+  }
+
+  /* Popovers and menus */
+  .motion-popover-in {
+    animation: motion-rise-in var(--duration-base) var(--ease-enter) both;
+  }
+
+  .motion-popover-out {
+    animation: motion-rise-out var(--duration-fast) var(--ease-exit) both;
+  }
+
+  /* Press feedback: the color changes at once, the scale is restrained. */
+  .press {
+    transition-property: background-color, border-color, color, scale;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-standard);
+  }
+
+  .press:active {
+    scale: var(--motion-press);
+  }
+}
