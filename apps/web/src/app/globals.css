@@ -2,6 +2,7 @@
 @import '../styles/tokens.css';
 @import '../styles/materials.css';
 @import '../styles/motion.css';
+@import '../styles/variants.css';
 
 @layer base {
   html {
@@ -31,7 +32,8 @@
     background-color: var(--color-accent-subtle);
   }
 
-  :focus-visible {
+  :focus-visible,
+  [data-preview~='focus'] {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
   }
