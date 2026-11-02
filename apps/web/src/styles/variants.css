@@ -1,0 +1,20 @@
+/*
+ * State previews. The design page renders hover, focus and active states
+ * statically with data-preview, so every state is visible and can be
+ * screenshotted. Hover keeps its media query, so touch devices never stick.
+ */
+
+@custom-variant hover {
+  @media (hover: hover) {
+    &:hover {
+      @slot;
+    }
+  }
+  &[data-preview~='hover'] {
+    @slot;
+  }
+}
+
+@custom-variant active (&:active, &[data-preview~='active']);
+
+@custom-variant focus-visible (&:focus-visible, &[data-preview~='focus']);
