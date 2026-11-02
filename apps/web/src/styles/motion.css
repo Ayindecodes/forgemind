@@ -1,0 +1,31 @@
+/*
+ * The motion system. Every transition and animation takes its timing from the
+ * duration and easing tokens, and motion.test.ts fails on timing declared
+ * anywhere else. The Motion library reads the same values from lib/motion.ts,
+ * which the same test keeps equal to these.
+ *
+ * Reduced motion keeps every fade and removes every movement: the scale and
+ * shift amounts collapse to nothing, and transitions stop touching transforms.
+ */
+
+:root {
+  --motion-scale: 0.96;
+  --motion-shift: 4px;
+  --motion-press: 0.98;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-scale: 1;
+    --motion-shift: 0px;
+    --motion-press: 1;
+  }
+
+  *,
+  ::before,
+  ::after {
+    transition-property:
+      color, background-color, border-color, outline-color,
+      text-decoration-color, fill, stroke, opacity, box-shadow !important;
+  }
+}
