@@ -43,6 +43,29 @@ const typeScale = [
   { token: 'text-code', className: 'font-mono text-code' },
 ];
 
+const materials = [
+  {
+    name: 'nav',
+    label: 'Glass navigation',
+    className: 'material-nav rounded-lg',
+  },
+  { name: 'toolbar', label: 'Glass toolbar', className: 'material-toolbar' },
+  { name: 'popover', label: 'Glass popover', className: 'material-popover' },
+];
+
+// Deliberately harsh: pure extremes wider than any blur radius.
+const backdrops = [
+  '#ffffff',
+  '#000000',
+  '#ff2d2d',
+  '#2dff6e',
+  '#2d6eff',
+  '#ffe02d',
+];
+
+const backdropText =
+  'error: build failed at step 4 of 7, retrying with bounded budget 0x7f3a ';
+
 const markSizes = [16, 20, 24, 32, 48];
 
 const metrics = ['1,284', '907', '11,111', '48,290', '3,076'];
@@ -67,6 +90,30 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h2 className="text-md font-semibold">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function MaterialSample({
+  name,
+  label,
+  className,
+}: {
+  name: string;
+  label: string;
+  className: string;
+}) {
+  return (
+    <div className={`flex flex-col gap-2 px-4 py-3 ${className}`}>
+      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+        <span className="font-medium">{label}</span>
+        <span className="text-fg-secondary">Secondary text</span>
+        <span className="text-fg-muted">Muted metadata</span>
+        <span className="text-accent-fg">Accent link</span>
+        <span className="text-success-fg">Checks passed</span>
+        <span className="text-error-fg">Build failed</span>
+      </div>
+      <div data-testid={`material-sample-${name}`} className="h-4" />
+    </div>
   );
 }
 
@@ -127,6 +174,55 @@ export default function DesignPage() {
             <span className="text-accent-fg">
               <Logo size={24} />
             </span>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Materials">
+        <p className="text-fg-secondary">
+          Glass squeezes whatever sits behind it into a safe tone range, so text
+          stays readable over any content.
+        </p>
+        <div
+          data-testid="material-stage"
+          className="relative isolate overflow-hidden rounded-xl border border-line"
+        >
+          <div aria-hidden="true" className="absolute inset-0 flex">
+            {backdrops.map((color) => (
+              <div
+                key={color}
+                className="flex-1"
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+          <p
+            aria-hidden="true"
+            className="absolute inset-0 overflow-hidden font-mono text-code font-semibold break-all text-[#808080]"
+          >
+            {backdropText.repeat(40)}
+          </p>
+          <div className="relative flex flex-col gap-4 p-6">
+            {materials.map(({ name, label, className }) => (
+              <MaterialSample
+                key={name}
+                name={name}
+                label={label}
+                className={className}
+              />
+            ))}
+            <div className="material-scrim -mx-6 -mb-6 p-6">
+              <MaterialSample
+                name="overlay"
+                label="Glass overlay over a scrim"
+                className="material-overlay"
+              />
+            </div>
+            <div data-testid="material-solid" className="material-solid p-4">
+              <p className="font-mono text-code text-fg-secondary">
+                Solid surface for code, logs, tables and forms
+              </p>
+            </div>
           </div>
         </div>
       </Section>
