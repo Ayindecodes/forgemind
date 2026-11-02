@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { open } from './support/open';
+
 import { readPixels } from './support/pixels';
 
 type Rgb = [number, number, number];
@@ -32,7 +34,7 @@ for (const colorScheme of ['dark', 'light'] as const) {
     page,
   }) => {
     await page.emulateMedia({ colorScheme });
-    await page.goto('/design');
+    await open(page, '/design');
 
     const glyph = toRgb(await computedRgb(page, 'color', 'mark-16'));
     const background = toRgb(
@@ -68,7 +70,7 @@ for (const colorScheme of ['dark', 'light'] as const) {
 }
 
 test('the app icon survives at 16px in the browser', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
 
   const [stem, gap] = await page.evaluate(async () => {
     const image = new Image(16, 16);
@@ -93,7 +95,7 @@ test('the app icon survives at 16px in the browser', async ({ page }) => {
 });
 
 test('declares the app icons', async ({ page, request }) => {
-  await page.goto('/');
+  await open(page, '/');
 
   const icons = await page
     .locator('link[rel="icon"], link[rel="apple-touch-icon"]')
@@ -111,7 +113,7 @@ test('declares the app icons', async ({ page, request }) => {
 });
 
 test('the logo has an accessible name', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
 
   await expect(
     page.getByRole('img', { name: 'ForgeMind' }).first(),
@@ -119,7 +121,7 @@ test('the logo has an accessible name', async ({ page }) => {
 });
 
 test('Geist loads for interface and code text', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
   await page.evaluate(() => document.fonts.ready);
 
   const fonts = await page.evaluate(() => ({
@@ -139,7 +141,7 @@ test('Geist loads for interface and code text', async ({ page }) => {
 });
 
 test('loading the fonts does not shift the layout', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
   await page.evaluate(() => document.fonts.ready);
 
   const shift = await page.evaluate(
@@ -165,7 +167,7 @@ test('loading the fonts does not shift the layout', async ({ page }) => {
 });
 
 test('tabular figures give every digit the same width', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
   await page.evaluate(() => document.fonts.ready);
 
   const widths = await page.evaluate(() =>
