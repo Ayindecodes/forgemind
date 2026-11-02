@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { expect, test, type Page } from '@playwright/test';
 
+import { open } from './support/open';
+
 import {
   composite,
   contrastRatio,
@@ -65,7 +67,7 @@ for (const theme of ['dark', 'light'] as const) {
       page,
     }) => {
       await page.emulateMedia({ colorScheme: theme });
-      await page.goto('/design');
+      await open(page, '/design');
 
       const { data } = await readPixels(page, `material-sample-${name}`);
       const pixels = Array.from({ length: data.length / 4 }, (_, index) => ({
@@ -109,7 +111,7 @@ for (const theme of ['dark', 'light'] as const) {
 }
 
 test('glass uses the blur and tone filters by default', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
 
   for (const { name, backdropFilter } of await materialStyles(page)) {
     expect(backdropFilter, name).toContain('blur(');
@@ -120,7 +122,7 @@ test('glass uses the blur and tone filters by default', async ({ page }) => {
 
 test('the solid material is opaque and unfiltered', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.goto('/design');
+  await open(page, '/design');
 
   const { backdropFilter, backgroundColor } = await page
     .getByTestId('material-solid')
@@ -134,7 +136,7 @@ test('nested glass turns solid and leaves its parent as glass', async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.goto('/design');
+  await open(page, '/design');
 
   const pairs = await page.evaluate((names) => {
     return names.flatMap((parentName) =>
@@ -174,7 +176,7 @@ test('glass is solid when the browser has no backdrop filter', async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.goto('/design');
+  await open(page, '/design');
 
   const removed = await page.evaluate(() => {
     let count = 0;
@@ -220,7 +222,7 @@ test('glass is solid when reduced transparency is requested', async ({
     features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }],
   });
 
-  await page.goto('/design');
+  await open(page, '/design');
 
   expectSolid(
     await materialStyles(page),
@@ -232,7 +234,7 @@ test('glass is solid with a stronger edge when more contrast is requested', asyn
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'dark', contrast: 'more' });
-  await page.goto('/design');
+  await open(page, '/design');
 
   expectSolid(
     await materialStyles(page),
@@ -251,7 +253,7 @@ test('glass is solid with a stronger edge when more contrast is requested', asyn
 
 test('glass has no filter in forced colors mode', async ({ page }) => {
   await page.emulateMedia({ forcedColors: 'active' });
-  await page.goto('/design');
+  await open(page, '/design');
 
   for (const { name, backdropFilter } of await materialStyles(page)) {
     expect(backdropFilter, name).toBe('none');
