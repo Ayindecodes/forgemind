@@ -3,7 +3,7 @@ import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
-import { MotionProvider } from '@/components/motion-provider';
+import { AppProviders } from '@/components/app-providers';
 import { ThemeSync } from '@/components/theme-sync';
 import { themeScript } from '@/lib/theme';
 
@@ -27,7 +27,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <ThemeSync />
-        <MotionProvider>{children}</MotionProvider>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );
