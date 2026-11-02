@@ -106,4 +106,14 @@
       backdrop-filter: none;
     }
   }
+
+  @media (prefers-contrast: more) {
+    .material-nav,
+    .material-toolbar,
+    .material-popover,
+    .material-overlay,
+    .material-solid {
+      border-color: var(--color-line-control);
+    }
+  }
 }
