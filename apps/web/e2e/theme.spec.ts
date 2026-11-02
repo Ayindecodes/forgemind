@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { open } from './support/open';
+
 const STORAGE_KEY = 'forgemind-theme';
 
 const DARK_CANVAS = 'rgb(11, 13, 16)';
@@ -36,7 +38,7 @@ function failOnPageErrors(page: Page) {
 test.describe('theme selection', () => {
   test('follows the system theme, including live changes', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto('/design');
+    await open(page, '/design');
 
     await expect(theme(page)).toHaveAttribute('data-theme', 'light');
     expect(await canvasColor(page)).toBe(LIGHT_CANVAS);
@@ -79,7 +81,7 @@ test.describe('theme selection', () => {
       });
     }, STORAGE_KEY);
 
-    await page.goto('/design');
+    await open(page, '/design');
     await expect(page.getByRole('radio', { name: 'Light' })).toBeChecked();
 
     expect(await page.evaluate(() => window.themeAtFirstContent)).toBe('light');
@@ -94,7 +96,7 @@ test.describe('theme selection', () => {
       (key) => localStorage.setItem(key, 'sepia'),
       STORAGE_KEY,
     );
-    await page.goto('/design');
+    await open(page, '/design');
 
     await expect(theme(page)).toHaveAttribute('data-theme', 'light');
     await expect(page.getByRole('radio', { name: 'System' })).toBeChecked();
@@ -102,7 +104,7 @@ test.describe('theme selection', () => {
 
   test('keeps a chosen theme across a reload', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.goto('/design');
+    await open(page, '/design');
 
     await chooseTheme(page, 'Light');
     await expect(theme(page)).toHaveAttribute('data-theme', 'light');
@@ -117,7 +119,7 @@ test.describe('theme selection', () => {
     page,
   }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.goto('/design');
+    await open(page, '/design');
 
     await chooseTheme(page, 'Light');
     await chooseTheme(page, 'System');
@@ -131,8 +133,8 @@ test.describe('theme selection', () => {
 
     await first.emulateMedia({ colorScheme: 'dark' });
     await second.emulateMedia({ colorScheme: 'dark' });
-    await first.goto('/design');
-    await second.goto('/design');
+    await open(first, '/design');
+    await open(second, '/design');
 
     await chooseTheme(first, 'Light');
 
@@ -151,7 +153,7 @@ test.describe('theme selection', () => {
         },
       });
     });
-    await page.goto('/design');
+    await open(page, '/design');
 
     await expect(theme(page)).toHaveAttribute('data-theme', 'dark');
 
@@ -164,7 +166,7 @@ test.describe('theme selection', () => {
 });
 
 test('the design page reports no contrast failures', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
 
   await expect(
     page.getByText(/contrast pairs checked, 0 below AA/),
