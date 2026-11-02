@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import { ForgeMark, Logo } from '@/components/brand/logo';
@@ -16,14 +15,12 @@ import {
   type TokenRole,
 } from '@/styles/contrast';
 
+import { DesignNav } from './design-nav';
+import { requireDesignPages } from './enabled';
 import { MotionDemos } from './motion-demos';
 import { ThemeSwitcher } from './theme-switcher';
 
 export const metadata: Metadata = { title: 'Design system | ForgeMind' };
-
-const isEnabled =
-  process.env.NODE_ENV !== 'production' ||
-  process.env.ENABLE_DESIGN_PAGE === '1';
 
 const colorGroups: { title: string; roles: TokenRole[] }[] = [
   { title: 'Surfaces', roles: ['surface'] },
@@ -133,7 +130,7 @@ function worstCase(results: ContrastResult[]) {
 }
 
 export default function DesignPage() {
-  if (!isEnabled) notFound();
+  requireDesignPages();
 
   const css = readFileSync(
     join(process.cwd(), 'src/styles/tokens.css'),
@@ -155,7 +152,10 @@ export default function DesignPage() {
             {failing.length} below AA
           </p>
         </div>
-        <ThemeSwitcher />
+        <div className="flex items-center gap-4">
+          <DesignNav />
+          <ThemeSwitcher />
+        </div>
       </header>
 
       <Section title="Motion">
