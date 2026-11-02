@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import { ForgeMark, Logo } from '@/components/brand/logo';
+import { durations, easings } from '@/lib/motion';
 import {
   auditContrast,
   readColorTokens,
@@ -15,6 +16,7 @@ import {
   type TokenRole,
 } from '@/styles/contrast';
 
+import { MotionDemos } from './motion-demos';
 import { ThemeSwitcher } from './theme-switcher';
 
 export const metadata: Metadata = { title: 'Design system | ForgeMind' };
@@ -155,6 +157,33 @@ export default function DesignPage() {
         </div>
         <ThemeSwitcher />
       </header>
+
+      <Section title="Motion">
+        <p className="text-fg-secondary">
+          Motion explains state changes. Small interactions take{' '}
+          {durations.fast * 1000}ms, popovers {durations.base * 1000}ms and
+          dialogs {durations.slow * 1000}ms. Reduced motion keeps the fades and
+          removes the movement.
+        </p>
+        <div className="flex flex-wrap gap-x-8 gap-y-1 font-mono text-xs text-fg-secondary">
+          {Object.entries(easings).map(([name, curve]) => (
+            <span key={name}>
+              ease-{name} cubic-bezier({curve.join(', ')})
+            </span>
+          ))}
+        </div>
+        <div className="relative isolate overflow-hidden rounded-xl border border-line bg-surface p-6">
+          <p
+            aria-hidden="true"
+            className="absolute inset-0 overflow-hidden p-6 font-mono text-code break-all text-line-control select-none"
+          >
+            {backdropText.repeat(30)}
+          </p>
+          <div className="relative">
+            <MotionDemos />
+          </div>
+        </div>
+      </Section>
 
       <Section title="Brand">
         <div className="flex flex-col gap-6 rounded-lg border border-line bg-surface p-6">
