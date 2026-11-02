@@ -114,10 +114,18 @@
   --shadow-md: 0 1px 3px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.35);
   --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.45);
 
-  /* Blur */
-  --blur-sm: 8px;
-  --blur-md: 16px;
-  --blur-lg: 24px;
+  /*
+   * Glass filters. Backdrops are squeezed into a safe tone range, so text on
+   * glass stays readable over any content. materials.css is the only consumer,
+   * and these names sit outside Tailwind's --blur-* namespace on purpose:
+   * blur utilities generate nothing, so glass can't be added ad hoc.
+   */
+  --glass-blur-sm: 8px;
+  --glass-blur-md: 16px;
+  --glass-blur-lg: 24px;
+  --glass-saturate: 1.4;
+  --glass-contrast: 0.6;
+  --glass-brightness: 0.4;
 
   /* Motion */
   --duration-fast: 120ms;
@@ -181,6 +189,10 @@
   --color-glass-line: rgb(20 24 30 / 0.1);
   --color-glass-highlight: rgb(255 255 255 / 0.7);
   --color-scrim: rgb(20 24 30 / 0.28);
+
+  /* Glass filters */
+  --glass-contrast: 0.4;
+  --glass-brightness: 1.45;
 
   /* Elevation */
   --shadow-sm: 0 1px 2px rgb(20 24 30 / 0.06);
