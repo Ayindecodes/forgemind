@@ -79,7 +79,7 @@ describe('auditContrast', () => {
       results.some(
         ({ token, background }) =>
           token === 'fg-muted' &&
-          background === 'elevated + scrim + glass + pressed',
+          background === 'backdrop-lightest + glass + pressed',
       ),
     ).toBe(true);
   });
