@@ -171,11 +171,8 @@ function backgroundStacks(tokens: Tokens): string[][] {
 
   const panels = [
     ...SURFACES.map((surface) => [surface]),
-    ...SURFACES.flatMap((surface) =>
-      glasses.flatMap((glass) => [
-        [surface, glass],
-        [surface, 'scrim', glass],
-      ]),
+    ...['backdrop-darkest', 'backdrop-lightest'].flatMap((backdrop) =>
+      glasses.map((glass) => [backdrop, glass]),
     ),
   ];
 
@@ -190,7 +187,9 @@ export function auditContrast(css: string): ContrastResult[] {
 
   for (const theme of themes) {
     const tokens = readColorTokens(css)[theme];
-    const color = (name: string) => parseColor(tokens[name] ?? '');
+    const backdrop: Record<string, Rgba> = readGlassBackdrop(css)[theme];
+    const color = (name: string) =>
+      backdrop[name] ?? parseColor(tokens[name] ?? '');
     const check = (token: string, background: string[], required: number) => {
       results.push({
         theme,
