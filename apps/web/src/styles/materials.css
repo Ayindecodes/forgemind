@@ -93,4 +93,17 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+
+  @media (prefers-reduced-transparency: reduce),
+    (prefers-contrast: more),
+    (forced-colors: active) {
+    .material-nav,
+    .material-toolbar,
+    .material-popover,
+    .material-overlay {
+      background-color: var(--color-elevated);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
 }
