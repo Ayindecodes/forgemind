@@ -61,8 +61,8 @@
   --color-info-subtle: rgb(127 184 230 / 0.12);
 
   /* Glass */
-  --color-glass: rgb(23 27 33 / 0.72);
-  --color-glass-strong: rgb(17 20 25 / 0.86);
+  --color-glass: rgb(11 13 16 / 0.78);
+  --color-glass-strong: rgb(11 13 16 / 0.88);
   --color-glass-line: rgb(255 255 255 / 0.1);
   --color-glass-highlight: rgb(255 255 255 / 0.08);
   --color-scrim: rgb(5 6 8 / 0.6);
@@ -124,8 +124,8 @@
   --glass-blur-md: 16px;
   --glass-blur-lg: 24px;
   --glass-saturate: 1.4;
-  --glass-contrast: 0.6;
-  --glass-brightness: 0.4;
+  --glass-contrast: 1;
+  --glass-brightness: 0.3;
 
   /* Motion */
   --duration-fast: 120ms;
@@ -191,8 +191,8 @@
   --color-scrim: rgb(20 24 30 / 0.28);
 
   /* Glass filters */
-  --glass-contrast: 0.4;
-  --glass-brightness: 1.45;
+  --glass-contrast: 0.3;
+  --glass-brightness: 2;
 
   /* Elevation */
   --shadow-sm: 0 1px 2px rgb(20 24 30 / 0.06);
