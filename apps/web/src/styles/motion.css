@@ -41,3 +41,46 @@
 @utility duration-slow {
   transition-duration: var(--duration-slow);
 }
+
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-scale-in {
+  from {
+    opacity: 0;
+    scale: var(--motion-scale);
+  }
+}
+
+@keyframes motion-scale-out {
+  to {
+    opacity: 0;
+    scale: var(--motion-scale);
+  }
+}
+
+/* Popovers rise out of the control that opened them. */
+@keyframes motion-rise-in {
+  from {
+    opacity: 0;
+    translate: var(--motion-shift-x, 0)
+      var(--motion-shift-y, calc(-1 * var(--motion-shift)));
+  }
+}
+
+@keyframes motion-rise-out {
+  to {
+    opacity: 0;
+    translate: var(--motion-shift-x, 0)
+      var(--motion-shift-y, calc(-1 * var(--motion-shift)));
+  }
+}
