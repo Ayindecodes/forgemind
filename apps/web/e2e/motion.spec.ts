@@ -1,5 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
+import { open } from './support/open';
+
 import { durations } from '../src/lib/motion';
 
 type Sample = { t: number; opacity: number; transform: string; height: number };
@@ -70,7 +72,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('transitions take their timing from the tokens', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
 
   const press = await page.getByTestId('press').evaluate((element) => {
     const style = getComputedStyle(element);
@@ -90,7 +92,7 @@ test('transitions take their timing from the tokens', async ({ page }) => {
 test('a dialog fades and scales in within the slow duration', async ({
   page,
 }) => {
-  await page.goto('/design');
+  await open(page, '/design');
 
   const samples = await sample(page, 'open-dialog', 'dialog');
   const first = samples[0];
@@ -114,7 +116,7 @@ test('a dialog fades and scales in within the slow duration', async ({
 test('a popover rises out of its control and settles in place', async ({
   page,
 }) => {
-  await page.goto('/design');
+  await open(page, '/design');
 
   const samples = await sample(page, 'toggle-popover', 'popover');
 
@@ -130,7 +132,7 @@ test('a popover rises out of its control and settles in place', async ({
 });
 
 test('an expandable panel opens to its natural height', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
 
   const samples = await sample(page, 'toggle-expand', 'expand');
   const heights = samples.map(({ height }) => height);
@@ -143,7 +145,7 @@ test('an expandable panel opens to its natural height', async ({ page }) => {
 });
 
 test('a status change fades in with the fast preset', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
   await page.getByTestId('advance-status').click();
 
   const chip = page.getByTestId('status');
@@ -157,7 +159,7 @@ test('a status change fades in with the fast preset', async ({ page }) => {
 });
 
 test('press feedback is a restrained scale', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
 
   const button = page.getByTestId('press');
   const box = await button.boundingBox();
@@ -175,7 +177,7 @@ test('press feedback is a restrained scale', async ({ page }) => {
 });
 
 test('nothing animates once the page has settled', async ({ page }) => {
-  await page.goto('/design');
+  await open(page, '/design');
   await page.waitForTimeout(1000);
 
   const running = await page.evaluate(
@@ -194,7 +196,7 @@ test.describe('with reduced motion', () => {
   });
 
   test('the dialog keeps its fade and loses its scale', async ({ page }) => {
-    await page.goto('/design');
+    await open(page, '/design');
 
     const samples = await sample(page, 'open-dialog', 'dialog');
 
@@ -209,7 +211,7 @@ test.describe('with reduced motion', () => {
   });
 
   test('the popover appears in place', async ({ page }) => {
-    await page.goto('/design');
+    await open(page, '/design');
 
     const samples = await sample(page, 'toggle-popover', 'popover');
 
@@ -221,7 +223,7 @@ test.describe('with reduced motion', () => {
   });
 
   test('press feedback has no movement', async ({ page }) => {
-    await page.goto('/design');
+    await open(page, '/design');
 
     const button = page.getByTestId('press');
     const box = await button.boundingBox();
@@ -243,7 +245,7 @@ test.describe('with reduced motion', () => {
   });
 
   test('the status fade still runs', async ({ page }) => {
-    await page.goto('/design');
+    await open(page, '/design');
     await page.getByTestId('advance-status').click();
 
     const chip = page.getByTestId('status');
