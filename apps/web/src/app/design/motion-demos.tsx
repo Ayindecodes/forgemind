@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useId, useState } from 'react';
 
-import { collapse, fade, panel, popover } from '@/lib/motion';
+import { useMotionPresets } from '@/lib/use-motion-presets';
 
 const statuses = ['Queued', 'Running', 'Passed'] as const;
 
@@ -16,6 +16,7 @@ export function MotionDemos() {
   const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState(0);
   const titleId = useId();
+  const presets = useMotionPresets();
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -65,7 +66,7 @@ export function MotionDemos() {
                 data-testid="popover"
                 role="region"
                 aria-label="Popover"
-                variants={popover('bottom')}
+                variants={presets.popover('bottom')}
                 initial="initial"
                 animate="animate"
                 exit="exit"
@@ -111,7 +112,7 @@ export function MotionDemos() {
         {expanded && (
           <motion.div
             data-testid="expand"
-            variants={collapse}
+            variants={presets.collapse}
             initial="initial"
             animate="animate"
             exit="exit"
@@ -130,7 +131,7 @@ export function MotionDemos() {
         {dialogOpen && (
           <motion.div
             data-testid="scrim"
-            variants={fade}
+            variants={presets.fade}
             initial="initial"
             animate="animate"
             exit="exit"
@@ -142,7 +143,7 @@ export function MotionDemos() {
               aria-modal="true"
               aria-labelledby={titleId}
               data-testid="dialog"
-              variants={panel}
+              variants={presets.panel}
               className="material-overlay w-full max-w-sm p-5"
               onClick={(event) => event.stopPropagation()}
             >
