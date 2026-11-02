@@ -21,6 +21,12 @@
     --motion-press: 1;
   }
 
+  /* Loading indicators hold still; the ring and the placeholder stay visible. */
+  .animate-spin,
+  .animate-pulse {
+    animation: none;
+  }
+
   *,
   ::before,
   ::after {
@@ -40,6 +46,19 @@
 
 @utility duration-slow {
   transition-duration: var(--duration-slow);
+}
+
+/* Loading indicators. Real activity is the one case for continuous motion. */
+@keyframes motion-spin {
+  to {
+    rotate: 1turn;
+  }
+}
+
+@keyframes motion-pulse {
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes motion-fade-in {
