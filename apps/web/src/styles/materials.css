@@ -66,4 +66,15 @@
   .material-scrim {
     background-color: var(--color-scrim);
   }
+
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .material-nav,
+    .material-toolbar,
+    .material-popover,
+    .material-overlay {
+      background-color: var(--material-fill);
+      -webkit-backdrop-filter: var(--material-filter);
+      backdrop-filter: var(--material-filter);
+    }
+  }
 }
