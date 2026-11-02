@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+import { open } from './support/open';
+
 const PAGE = '/design/components';
 
 /**
@@ -38,7 +40,7 @@ test.describe('accessibility', () => {
       page,
     }) => {
       await page.emulateMedia({ colorScheme: theme });
-      await page.goto('/design');
+      await open(page, '/design');
       await expectNoAxeViolations(page, `/design ${theme}`);
     });
 
@@ -46,13 +48,13 @@ test.describe('accessibility', () => {
       page,
     }) => {
       await page.emulateMedia({ colorScheme: theme });
-      await page.goto(PAGE);
+      await open(page, PAGE);
       await expectNoAxeViolations(page, `${PAGE} ${theme}`);
     });
   }
 
   test('open overlays have no axe violations', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     await page.getByTestId('dialog-trigger').click();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -79,7 +81,7 @@ test.describe('accessibility', () => {
 test.describe('state previews', () => {
   test('show hover, focus and pressed states statically', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     expect(await background(page, 'button-secondary-hover')).not.toBe(
       await background(page, 'button-secondary'),
@@ -100,7 +102,7 @@ test.describe('state previews', () => {
   });
 
   test('a loading button is busy and blocks input', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     const button = page.getByTestId('button-primary-loading');
     await expect(button).toHaveAttribute('aria-busy', 'true');
@@ -113,7 +115,7 @@ test.describe('keyboard', () => {
   test('a dialog traps focus, closes on Escape and returns focus', async ({
     page,
   }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     const trigger = page.getByTestId('dialog-trigger');
     await trigger.focus();
@@ -140,7 +142,7 @@ test.describe('keyboard', () => {
   test('a confirm dialog waits for the action, then closes', async ({
     page,
   }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     await page.getByTestId('confirm-trigger').click();
     const dialog = page.getByRole('alertdialog');
@@ -156,7 +158,7 @@ test.describe('keyboard', () => {
   });
 
   test('a destructive confirm starts on Cancel', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     await page.getByTestId('destructive-trigger').click();
     const dialog = page.getByRole('alertdialog');
@@ -170,7 +172,7 @@ test.describe('keyboard', () => {
   });
 
   test('a menu opens with the keyboard and returns focus', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     const trigger = page.getByTestId('menu-trigger');
     await trigger.focus();
@@ -189,7 +191,7 @@ test.describe('keyboard', () => {
   });
 
   test('tabs move with the arrow keys', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     const tabs = page.getByTestId('tabs');
     await tabs.getByRole('tab', { name: 'Diff' }).focus();
@@ -218,7 +220,7 @@ test.describe('keyboard', () => {
   test('a select opens, moves and chooses with the keyboard', async ({
     page,
   }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     const trigger = page.getByTestId('select');
     await expect(trigger).toHaveText(/Medium/);
@@ -240,7 +242,7 @@ test.describe('keyboard', () => {
   });
 
   test('a tooltip shows on focus and hides on blur', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     await page.getByTestId('tooltip-trigger').focus();
     await expect(page.getByRole('tooltip')).toHaveText('Notifications');
@@ -252,7 +254,7 @@ test.describe('keyboard', () => {
   });
 
   test('a popover closes on Escape and returns focus', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     const trigger = page.getByTestId('popover-trigger');
     await trigger.focus();
@@ -265,7 +267,7 @@ test.describe('keyboard', () => {
   });
 
   test('checkbox and switch toggle with Space', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     const checkbox = page.getByTestId('checkbox');
     await expect(checkbox).toHaveAttribute('aria-checked', 'true');
@@ -285,7 +287,7 @@ test.describe('forms', () => {
   test('an invalid field is announced and described by its error', async ({
     page,
   }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     const input = page.getByTestId('input-invalid');
     await expect(input).toHaveAttribute('aria-invalid', 'true');
@@ -302,7 +304,7 @@ test.describe('forms', () => {
   });
 
   test('every control has an accessible name', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     const unnamed = await page
       .locator('main')
@@ -331,7 +333,7 @@ test.describe('forms', () => {
 
 test.describe('toasts', () => {
   test('appear, can be dismissed and leave on their own', async ({ page }) => {
-    await page.goto(PAGE);
+    await open(page, PAGE);
 
     await page.getByTestId('toast-success').click();
     const toast = page
@@ -360,7 +362,7 @@ test.describe('toasts', () => {
 
 test('loading indicators hold still under reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto(PAGE);
+  await open(page, PAGE);
 
   const animations = await page.evaluate(
     () =>
