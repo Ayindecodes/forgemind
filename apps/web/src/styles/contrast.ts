@@ -20,7 +20,7 @@ export type ContrastResult = {
   required: number;
 };
 
-type Rgba = { r: number; g: number; b: number; a: number };
+export type Rgba = { r: number; g: number; b: number; a: number };
 type Tokens = Record<string, string>;
 
 const TEXT_RATIO = 4.5;
@@ -63,6 +63,50 @@ function extractColors(css: string): Tokens {
   }
 
   return tokens;
+}
+
+function glassTone(css: string, name: string, fallback?: number): number {
+  const value = new RegExp(`--glass-${name}:\\s*([\\d.]+);`).exec(css)?.[1];
+  const tone = value === undefined ? fallback : Number(value);
+
+  if (tone === undefined) throw new Error(`Missing --glass-${name}`);
+
+  return tone;
+}
+
+/**
+ * The darkest and lightest colors anything behind glass can become. The tone
+ * filters run after saturation, so these bounds hold for every possible backdrop.
+ */
+export function readGlassBackdrop(css: string) {
+  const lightStart = css.indexOf(":root[data-theme='light']");
+  const [darkCss, lightCss] = [css.slice(0, lightStart), css.slice(lightStart)];
+
+  const contrast = glassTone(darkCss, 'contrast');
+  const brightness = glassTone(darkCss, 'brightness');
+
+  const bounds = (slope: number, scale: number) => {
+    const channel = (value: number) => {
+      const contrasted = Math.min(1, (value - 0.5) * slope + 0.5);
+      return Math.min(1, Math.max(0, contrasted) * scale) * 255;
+    };
+    const grey = (value: number): Rgba => ({
+      r: channel(value),
+      g: channel(value),
+      b: channel(value),
+      a: 1,
+    });
+
+    return { 'backdrop-darkest': grey(0), 'backdrop-lightest': grey(1) };
+  };
+
+  return {
+    dark: bounds(contrast, brightness),
+    light: bounds(
+      glassTone(lightCss, 'contrast', contrast),
+      glassTone(lightCss, 'brightness', brightness),
+    ),
+  } satisfies Record<Theme, Record<string, Rgba>>;
 }
 
 export function parseColor(value: string): Rgba {
