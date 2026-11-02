@@ -304,6 +304,130 @@ export function Showcase() {
           <TabsContent value="findings">No findings.</TabsContent>
         </Tabs>
       </Section>
+
+      <Section title="Overlays">
+        <div className="flex flex-wrap items-center gap-3">
+          <Tooltip content="Runs the task on the current base commit">
+            <Button icon={<Play />} data-testid="tooltip-button">
+              Hover for tooltip
+            </Button>
+          </Tooltip>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button data-testid="popover-trigger">Popover</Button>
+            </PopoverTrigger>
+            <PopoverContent data-testid="popover">
+              <p className="font-medium">Base commit</p>
+              <p className="mt-1 font-mono text-code text-fg-secondary">
+                49691f7 Show the logo in the README
+              </p>
+              <PopoverClose asChild>
+                <Button size="sm" className="mt-3">
+                  Done
+                </Button>
+              </PopoverClose>
+            </PopoverContent>
+          </Popover>
+
+          <Menu>
+            <MenuTrigger asChild>
+              <Button data-testid="menu-trigger">Menu</Button>
+            </MenuTrigger>
+            <MenuContent data-testid="menu">
+              <MenuLabel>Task</MenuLabel>
+              <MenuItem shortcut={['Ctrl', 'Enter']}>Run again</MenuItem>
+              <MenuItem shortcut={['Ctrl', 'C']}>Copy task link</MenuItem>
+              <MenuItem disabled>Open pull request</MenuItem>
+              <MenuSeparator />
+              <MenuItem destructive data-testid="menu-delete">
+                Delete task
+              </MenuItem>
+            </MenuContent>
+          </Menu>
+
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button data-testid="dialog-trigger">Dialog</Button>
+            </DialogTrigger>
+            <DialogContent
+              title="Rename branch"
+              description="The remote branch is renamed when the pull request opens."
+              data-testid="dialog"
+            >
+              <Field label="Branch name">
+                <Input defaultValue="fix/retry-budget" />
+              </Field>
+              <div className="mt-4 flex justify-end gap-2">
+                <DialogClose asChild>
+                  <Button>Cancel</Button>
+                </DialogClose>
+                <DialogClose asChild>
+                  <Button variant="primary">Rename</Button>
+                </DialogClose>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <ConfirmDialog
+            trigger={<Button data-testid="confirm-trigger">Confirm</Button>}
+            title="Open a pull request?"
+            description="ForgeMind pushes the working branch and opens a pull request for review. Nothing merges."
+            confirmLabel="Open pull request"
+            onConfirm={async () => {
+              await wait(300);
+              setConfirmed((count) => count + 1);
+            }}
+          />
+
+          <ConfirmDialog
+            trigger={
+              <Button
+                variant="danger"
+                icon={<Trash2 />}
+                data-testid="destructive-trigger"
+              >
+                Delete
+              </Button>
+            }
+            title="Delete this task?"
+            description="The task, its events and its artifacts are removed. This cannot be undone."
+            confirmLabel="Delete task"
+            destructive
+            onConfirm={() => setDeleted((count) => count + 1)}
+          />
+          <span
+            className="text-sm text-fg-secondary"
+            data-testid="confirm-count"
+          >
+            Confirmed {confirmed}, deleted {deleted}
+          </span>
+        </div>
+      </Section>
+
+      <Section title="Toasts">
+        <div className="flex flex-wrap gap-3">
+          {toastTones.map((tone) => (
+            <Button
+              key={tone}
+              data-testid={`toast-${tone}`}
+              onClick={() =>
+                toast({
+                  tone,
+                  title: `${tone[0]?.toUpperCase()}${tone.slice(1)} toast`,
+                  description: 'Verification finished on fix/retry-budget.',
+                  action:
+                    tone === 'success'
+                      ? { label: 'View diff', onClick: () => undefined }
+                      : undefined,
+                })
+              }
+            >
+              {tone}
+            </Button>
+          ))}
+        </div>
+      </Section>
     </div>
   );
 }
