@@ -34,3 +34,51 @@ export const transitions = {
   base: { duration: durations.base, ease: easings.standard },
   slow: { duration: durations.slow, ease: easings.standard },
 } as const satisfies Record<string, Transition>;
+
+const enter = (duration: number): Transition => ({
+  duration,
+  ease: easings.enter,
+});
+
+const exit = (duration: number): Transition => ({
+  duration,
+  ease: easings.exit,
+});
+
+export const fade = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: enter(durations.fast) },
+  exit: { opacity: 0, transition: exit(durations.fast) },
+} as const satisfies Variants;
+
+/** Dialogs and overlays settle in from slightly smaller. */
+export const panel = {
+  initial: { opacity: 0, scale: movement.scale },
+  animate: { opacity: 1, scale: 1, transition: enter(durations.slow) },
+  exit: { opacity: 0, scale: movement.scale, transition: exit(durations.base) },
+} as const satisfies Variants;
+
+export type Side = 'top' | 'right' | 'bottom' | 'left';
+
+/** Popovers rise out of the control that opened them. */
+export function popover(side: Side = 'bottom') {
+  const offset = {
+    top: { y: movement.shift },
+    right: { x: -movement.shift },
+    bottom: { y: -movement.shift },
+    left: { x: movement.shift },
+  }[side];
+
+  return {
+    initial: { opacity: 0, ...offset },
+    animate: { opacity: 1, x: 0, y: 0, transition: enter(durations.base) },
+    exit: { opacity: 0, ...offset, transition: exit(durations.fast) },
+  } satisfies Variants;
+}
+
+/** Expandable panels open to their natural height. */
+export const collapse = {
+  initial: { height: 0, opacity: 0 },
+  animate: { height: 'auto', opacity: 1, transition: transitions.base },
+  exit: { height: 0, opacity: 0, transition: transitions.base },
+} as const satisfies Variants;
