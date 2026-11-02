@@ -1,0 +1,69 @@
+/*
+ * The material system. Glass exists only through these classes, and
+ * materials.test.ts fails on any other backdrop filter in the app.
+ *
+ * Every glass class starts solid and becomes translucent only where the browser
+ * supports backdrop filters, so an unsupported browser loses the effect rather
+ * than readability. Nested glass, reduced transparency, increased contrast and
+ * forced colors all return to that solid state.
+ */
+
+@layer components {
+  .material-nav,
+  .material-toolbar,
+  .material-popover,
+  .material-overlay {
+    --material-filter: blur(var(--material-blur))
+      saturate(var(--glass-saturate)) contrast(var(--glass-contrast))
+      brightness(var(--glass-brightness));
+
+    border: 1px solid var(--color-glass-line);
+    background-color: var(--color-elevated);
+    box-shadow:
+      inset 0 1px 0 var(--color-glass-highlight),
+      var(--material-shadow);
+  }
+
+  .material-nav {
+    --material-blur: var(--glass-blur-md);
+    --material-fill: var(--color-glass);
+    --material-shadow: var(--shadow-sm);
+  }
+
+  .material-toolbar {
+    --material-blur: var(--glass-blur-sm);
+    --material-fill: var(--color-glass);
+    --material-shadow: var(--shadow-md);
+
+    border-radius: var(--radius-xl);
+  }
+
+  .material-popover {
+    --material-blur: var(--glass-blur-md);
+    --material-fill: var(--color-glass-strong);
+    --material-shadow: var(--shadow-lg);
+
+    border-radius: var(--radius-xl);
+  }
+
+  .material-overlay {
+    --material-blur: var(--glass-blur-lg);
+    --material-fill: var(--color-glass-strong);
+    --material-shadow: var(--shadow-lg);
+
+    border-radius: var(--radius-2xl);
+  }
+
+  /* For code, logs, tables and forms, where readability outranks depth. */
+  .material-solid {
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-elevated);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* The dimmed layer behind an overlay. It has no blur, so it costs little. */
+  .material-scrim {
+    background-color: var(--color-scrim);
+  }
+}
