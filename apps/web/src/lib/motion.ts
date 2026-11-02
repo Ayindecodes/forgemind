@@ -82,3 +82,22 @@ export const collapse = {
   animate: { height: 'auto', opacity: 1, transition: transitions.base },
   exit: { height: 0, opacity: 0, transition: transitions.base },
 } as const satisfies Variants;
+
+const MOVEMENT = new Set(['x', 'y', 'scale', 'rotate', 'height', 'width']);
+
+/**
+ * The same presets with every movement removed, for reduced motion. Only the
+ * fades remain, so nothing pops for even a single frame before settling.
+ */
+export function withoutMovement<T extends Variants>(variants: T): T {
+  return Object.fromEntries(
+    Object.entries(variants).map(([name, state]) => [
+      name,
+      typeof state === 'function'
+        ? state
+        : Object.fromEntries(
+            Object.entries(state).filter(([key]) => !MOVEMENT.has(key)),
+          ),
+    ]),
+  ) as T;
+}
