@@ -4,7 +4,15 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { durations, easings, movement } from './motion';
+import {
+  collapse,
+  durations,
+  easings,
+  movement,
+  panel,
+  popover,
+  withoutMovement,
+} from './motion';
 
 const srcDir = fileURLToPath(new URL('..', import.meta.url));
 const read = (path: string) => readFileSync(join(srcDir, path), 'utf8');
@@ -136,3 +144,17 @@ describe('findTimingViolations', () => {
   });
 });
 
+describe('withoutMovement', () => {
+  it('keeps the fades and drops every movement', () => {
+    expect(withoutMovement(panel)).toEqual({
+      initial: { opacity: 0 },
+      animate: { opacity: 1, transition: panel.animate.transition },
+      exit: { opacity: 0, transition: panel.exit.transition },
+    });
+    expect(withoutMovement(popover('left')).initial).toEqual({ opacity: 0 });
+    expect(withoutMovement(collapse).animate).toEqual({
+      opacity: 1,
+      transition: collapse.animate.transition,
+    });
+  });
+});
