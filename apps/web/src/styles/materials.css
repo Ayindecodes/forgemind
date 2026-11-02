@@ -77,4 +77,20 @@
       backdrop-filter: var(--material-filter);
     }
   }
+
+  /*
+   * A backdrop filter can't see past a filtered ancestor, so nested glass would
+   * blur nothing and cost a repaint anyway. It stays solid instead.
+   */
+  :is(.material-nav, .material-toolbar, .material-popover, .material-overlay)
+    :is(
+      .material-nav,
+      .material-toolbar,
+      .material-popover,
+      .material-overlay
+    ) {
+    background-color: var(--color-elevated);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
