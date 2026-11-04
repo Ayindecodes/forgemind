@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 
+import { ThemeSwitcher } from '@/components/theme-switcher';
+
 import { DesignNav } from '../design-nav';
 import { requireDesignPages } from '../enabled';
-import { ThemeSwitcher } from '../theme-switcher';
 
 import { Showcase } from './showcase';
 
