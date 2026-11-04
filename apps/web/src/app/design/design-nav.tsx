@@ -4,18 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { cx } from '@/lib/cx';
-
-const pages = [
-  { href: '/design', label: 'Foundations' },
-  { href: '/design/components', label: 'Components' },
-];
+import { designNav } from '@/lib/navigation';
 
 export function DesignNav() {
   const pathname = usePathname();
 
   return (
     <nav aria-label="Design pages" className="flex gap-1">
-      {pages.map(({ href, label }) => (
+      {designNav.map(({ href, label }) => (
         <Link
           key={href}
           href={href}
