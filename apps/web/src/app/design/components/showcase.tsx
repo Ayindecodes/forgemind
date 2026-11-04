@@ -28,6 +28,7 @@ import {
   DialogContent,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Field } from '@/components/ui/field';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input, Textarea } from '@/components/ui/input';
@@ -277,6 +278,26 @@ export function Showcase() {
             </div>
             <SkeletonText />
           </div>
+        </div>
+      </Section>
+
+      <Section
+        title="Empty states"
+        description="Say what will appear, and offer the next step when there is one."
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <EmptyState
+            icon={<GitPullRequest />}
+            title="No pull requests yet"
+            description="Pull requests open here once a task passes verification."
+          />
+          <EmptyState
+            icon={<Search />}
+            title="No matching tasks"
+            description="Nothing matches “retry budget”. Try a branch name or a file path instead."
+          >
+            <Button size="sm">Clear search</Button>
+          </EmptyState>
         </div>
       </Section>
 
