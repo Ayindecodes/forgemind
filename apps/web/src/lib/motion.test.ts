@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -106,12 +106,12 @@ describe('the rest of the app', () => {
       recursive: true,
       encoding: 'utf8',
     })
+      // Windows lists paths with backslashes; TIMING_SOURCES uses slashes.
+      .map((file) => file.split(sep).join('/'))
       .filter((file) => /\.(css|ts|tsx)$/.test(file))
       .filter((file) => !/\.test\.tsx?$/.test(file))
       .filter((file) => !TIMING_SOURCES.includes(file))
-      .flatMap((file) =>
-        findTimingViolations(read(file), relative(srcDir, join(srcDir, file))),
-      );
+      .flatMap((file) => findTimingViolations(read(file), file));
 
     expect(violations).toEqual([]);
   });
