@@ -13,6 +13,8 @@ type SelectProps = ComponentProps<typeof RadixSelect.Root> & {
   placeholder?: string;
   className?: string;
   'data-testid'?: string;
+  /** Names the control when no visible label does. */
+  'aria-label'?: string;
   children: ReactNode;
 };
 
@@ -20,6 +22,7 @@ export function Select({
   placeholder,
   className,
   'data-testid': testId,
+  'aria-label': label,
   children,
   ...props
 }: SelectProps) {
@@ -34,6 +37,7 @@ export function Select({
           className,
         )}
         data-testid={testId}
+        aria-label={label}
         {...control}
       >
         <RadixSelect.Value placeholder={placeholder} />
