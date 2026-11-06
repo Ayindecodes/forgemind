@@ -195,6 +195,8 @@ export function seedStore(store: Store, seed: number) {
   data.sessions.set('dev-owner', { userId: ayinde.id, expiresAt: farAhead });
   data.sessions.set('dev-new', { userId: sam.id, expiresAt: farAhead });
   data.sessions.set('dev-expired', { userId: ayinde.id, expiresAt: ago(1440) });
+  // A reviewer, for checking what that role may and may not do.
+  data.sessions.set('dev-reviewer', { userId: lena.id, expiresAt: farAhead });
 
   data.installations.set('org-1', {
     id: 'installation-1',
