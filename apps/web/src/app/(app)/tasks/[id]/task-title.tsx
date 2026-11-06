@@ -1,12 +1,12 @@
 'use client';
 
 import type { Task } from '@forgemind/contract';
-import { useQuery } from '@tanstack/react-query';
 
 import { PageHeader } from '@/components/shell/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Status, type StatusValue } from '@/components/ui/status';
-import { ApiRequestError, request } from '@/lib/api-client';
+import { ApiRequestError } from '@/lib/api-client';
+import { useTask } from '@/lib/queries';
 
 const statusOf: Record<Task['status'], StatusValue> = {
   queued: 'pending',
@@ -18,10 +18,7 @@ const statusOf: Record<Task['status'], StatusValue> = {
 };
 
 export function TaskTitle({ id }: { id: string }) {
-  const task = useQuery({
-    queryKey: ['task', id],
-    queryFn: ({ signal }) => request('task', { params: { id }, signal }),
-  });
+  const task = useTask(id);
 
   if (task.isPending) return <Skeleton className="h-7 w-72" />;
   if (

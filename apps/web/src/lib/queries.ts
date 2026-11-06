@@ -36,6 +36,8 @@ export const keys = {
   repositories: ['repositories'] as const,
   tasks: ['tasks'] as const,
   notifications: ['notifications'] as const,
+  task: (id: string) => ['task', id] as const,
+  run: (id: string) => ['run', id] as const,
 };
 
 export const useSession = () =>
@@ -74,6 +76,21 @@ export const useTasks = (enabled = true) =>
     queryFn: ({ signal }) =>
       request('tasks', { query: { limit: 200 }, signal }),
     enabled,
+  });
+
+export const useTask = (id: string) =>
+  useQuery({
+    queryKey: keys.task(id),
+    queryFn: ({ signal }) => request('task', { params: { id }, signal }),
+  });
+
+/** A run's state as the API last folded it. The live layer takes over from here. */
+export const useRun = (id: string | undefined) =>
+  useQuery({
+    queryKey: keys.run(id ?? ''),
+    queryFn: ({ signal }) =>
+      request('run', { params: { id: id ?? '' }, signal }),
+    enabled: id !== undefined,
   });
 
 export const useNotifications = () =>
