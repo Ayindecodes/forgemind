@@ -29,6 +29,7 @@ import {
   type TaskQuery,
   type UsageSummary,
   type User,
+  type RunQuery,
 } from '@forgemind/contract';
 
 import { ApiFailure } from './errors';
@@ -932,6 +933,20 @@ export function createStore(options: StoreOptions = {}) {
       });
 
       return pr;
+    },
+    runs(orgId: string, filter: RunQuery = {}): Run[] {
+      return [...data.runs.values()]
+        .map((entry) => entry.run)
+        .filter((run) => data.tasks.get(run.taskId)?.organizationId === orgId)
+        .filter((run) => !filter.taskId || run.taskId === filter.taskId)
+        .filter(
+          (run) =>
+            !filter.repositoryId ||
+            data.tasks.get(run.taskId)?.repositoryId === filter.repositoryId,
+        )
+        .filter((run) => !filter.status || run.status === filter.status)
+        .filter((run) => !filter.outcome || run.outcome === filter.outcome)
+        .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''));
     },
     taskRuns(orgId: string, taskId: string): Run[] {
       task(orgId, taskId);

@@ -12,6 +12,7 @@ import {
   HealthResponse,
   InstallCallback,
   PageQuery,
+  RunQuery,
   TaskQuery,
   type ErrorCode,
   type Session,
@@ -298,6 +299,15 @@ export function createApp(store: Store) {
   );
   app.get(e.taskRuns.path, (c) => c.json(store.taskRuns(org(c).orgId, id(c))));
 
+  app.get(e.runs.path, (c) => {
+    const { cursor, limit, ...filter } = query(
+      c,
+      PageQuery.extend(RunQuery.shape),
+    );
+    return c.json(
+      paginate(store.runs(org(c).orgId, filter), { cursor, limit }),
+    );
+  });
   app.get(e.run.path, (c) => c.json(store.run(org(c).orgId, id(c))));
   app.get(e.runEvents.path, (c) => {
     const { after } = query(c, EventQuery);
