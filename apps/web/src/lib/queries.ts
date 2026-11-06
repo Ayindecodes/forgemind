@@ -36,6 +36,7 @@ export const keys = {
   repositories: ['repositories'] as const,
   tasks: ['tasks'] as const,
   notifications: ['notifications'] as const,
+  pullRequests: ['pull-requests'] as const,
   task: (id: string) => ['task', id] as const,
   run: (id: string) => ['run', id] as const,
 };
@@ -91,6 +92,14 @@ export const useRun = (id: string | undefined) =>
     queryFn: ({ signal }) =>
       request('run', { params: { id: id ?? '' }, signal }),
     enabled: id !== undefined,
+  });
+
+export const usePullRequests = (enabled = true) =>
+  useQuery({
+    queryKey: keys.pullRequests,
+    queryFn: ({ signal }) =>
+      request('pullRequests', { query: { limit: 200 }, signal }),
+    enabled,
   });
 
 export const useNotifications = () =>
