@@ -200,7 +200,7 @@ export function UsagePage() {
         </Panel>
 
         <Panel id="quotas" title="Quotas" testId="quotas">
-          <dl className="flex flex-col gap-3 px-4 py-4 text-sm">
+          <ul className="flex flex-col gap-3 px-4 py-4 text-sm">
             {(
               [
                 ['concurrentRuns', 'Concurrent runs'],
@@ -211,14 +211,14 @@ export function UsagePage() {
               const quota = data.quotas[key];
               const ratio = quotaRatio(quota);
               return (
-                <div
+                <li
                   key={key}
                   className="flex flex-col gap-1"
                   data-testid={`quota-${key}`}
                 >
                   <div className="flex items-baseline justify-between gap-3">
-                    <dt>{label}</dt>
-                    <dd className="tabular-nums">
+                    <span>{label}</span>
+                    <span className="tabular-nums">
                       {formatCompact(quota.used)}
                       <span className="text-fg-secondary">
                         {quota.max === null
@@ -230,7 +230,7 @@ export function UsagePage() {
                           near the limit
                         </Badge>
                       )}
-                    </dd>
+                    </span>
                   </div>
                   {ratio !== null && (
                     <div
@@ -251,10 +251,10 @@ export function UsagePage() {
                       />
                     </div>
                   )}
-                </div>
+                </li>
               );
             })}
-          </dl>
+          </ul>
         </Panel>
       </div>
     </div>
