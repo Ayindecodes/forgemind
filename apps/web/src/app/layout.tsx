@@ -4,7 +4,9 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 import { AppProviders } from '@/components/app-providers';
+import { SidebarSync } from '@/components/sidebar-sync';
 import { ThemeSync } from '@/components/theme-sync';
+import { sidebarScript } from '@/lib/sidebar';
 import { themeScript } from '@/lib/theme';
 
 import './globals.css';
@@ -19,14 +21,20 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html
       lang="en"
       data-theme="dark"
+      data-sidebar="expanded"
       className={`${GeistSans.variable} ${GeistMono.variable}`}
       suppressHydrationWarning
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `${themeScript};${sidebarScript}`,
+          }}
+        />
       </head>
       <body>
         <ThemeSync />
+        <SidebarSync />
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

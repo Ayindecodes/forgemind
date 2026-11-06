@@ -5,6 +5,22 @@
 @import '../styles/variants.css';
 
 @layer base {
+  :root {
+    --sidebar-width: 15rem;
+    --topbar-height: 3.5rem;
+  }
+
+  :root[data-sidebar='compact'] {
+    --sidebar-width: 4rem;
+  }
+
+  /* Laptops get the compact sidebar whatever the preference says. */
+  @media (min-width: 64rem) and (max-width: 79.99rem) {
+    :root {
+      --sidebar-width: 4rem;
+    }
+  }
+
   html {
     background-color: var(--color-canvas);
     color: var(--color-fg);
