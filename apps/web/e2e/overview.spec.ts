@@ -35,8 +35,16 @@ test.describe('the overview', () => {
   });
 
   test('every number traces to the contract', async ({ page }) => {
-    await open(page, '/');
-    const usage = await fetchJson<{
+    // Compare against the very responses the page received, so a run that
+    // finishes on another worker in between cannot skew the comparison.
+    const served = <T>(path: string) =>
+      page
+        .waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === path && response.ok(),
+        )
+        .then((response) => response.json() as Promise<T>);
+    const usageServed = served<{
       runs: {
         total: number;
         succeeded: number;
@@ -45,7 +53,15 @@ test.describe('the overview', () => {
         unverified: number;
       };
       quotas: { monthlyRuns: { used: number; max: number | null } };
-    }>(page, '/usage');
+    }>('/usage');
+    const repositoriesServed = served<{ items: { status: string }[] }>(
+      '/repositories',
+    );
+    const auditServed = served<{
+      items: { actorName: string; target: { label: string } }[];
+    }>('/audit');
+    await open(page, '/');
+    const usage = await usageServed;
     const panel = page.getByTestId('usage');
     await expect(panel.locator('[data-metric="runs"]')).toContainText(
       String(usage.runs.total),
@@ -60,10 +76,7 @@ test.describe('the overview', () => {
       String(usage.quotas.monthlyRuns.used),
     );
 
-    const repositories = await fetchJson<{ items: { status: string }[] }>(
-      page,
-      '/repositories?limit=200',
-    );
+    const repositories = await repositoriesServed;
     const connected = repositories.items.filter(
       ({ status }) => status !== 'revoked',
     ).length;
@@ -71,9 +84,7 @@ test.describe('the overview', () => {
       await page.getByTestId('repository-list').locator('li').count(),
     ).toBe(Math.min(connected, 6));
 
-    const audit = await fetchJson<{
-      items: { actorName: string; target: { label: string } }[];
-    }>(page, '/audit?limit=8');
+    const audit = await auditServed;
     const latest = audit.items[0];
     await expect(
       page.getByTestId('activity-list').locator('li').first(),
