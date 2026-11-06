@@ -39,9 +39,12 @@ const failed = (error: unknown) =>
 export function TaskActions({
   task,
   pullRequest,
+  draftInstructions,
 }: {
   task: Task;
   pullRequest: PullRequest | null;
+  /** Text to start a revision request with, such as drafted review comments. */
+  draftInstructions?: string;
 }) {
   const session = useSession();
   const client = useQueryClient();
@@ -152,7 +155,11 @@ export function TaskActions({
             variant="secondary"
             size="sm"
             data-testid="request-changes"
-            onClick={() => setRevising(true)}
+            onClick={() => {
+              if (instructions.length === 0 && draftInstructions)
+                setInstructions(draftInstructions);
+              setRevising(true);
+            }}
           >
             Request changes
           </Button>
