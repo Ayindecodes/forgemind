@@ -1,5 +1,7 @@
 import type { Run } from '@forgemind/contract';
+import Link from 'next/link';
 
+import { Button } from '@/components/ui/button';
 import { Status } from '@/components/ui/status';
 import { explainVerification, type RunView } from '@/lib/live/derive';
 
@@ -60,12 +62,22 @@ export function OutcomePanel({ run, view }: { run: Run; view: RunView }) {
         <dt className="text-fg-secondary">Patch</dt>
         <dd>
           {run.diff ? (
-            <>
-              {run.diff.filesChanged}{' '}
-              {run.diff.filesChanged === 1 ? 'file' : 'files'} changed,{' '}
-              <span className="text-success-fg">+{run.diff.additions}</span>{' '}
-              <span className="text-error-fg">−{run.diff.deletions}</span>
-            </>
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span>
+                {run.diff.filesChanged}{' '}
+                {run.diff.filesChanged === 1 ? 'file' : 'files'} changed,{' '}
+                <span className="text-success-fg">+{run.diff.additions}</span>{' '}
+                <span className="text-error-fg">−{run.diff.deletions}</span>
+              </span>
+              <Button asChild size="sm" variant="secondary">
+                <Link
+                  href={`/tasks/${run.taskId}/review`}
+                  data-testid="review-patch"
+                >
+                  Review the patch
+                </Link>
+              </Button>
+            </span>
           ) : run.expectsPatch ? (
             'No change was produced.'
           ) : (
