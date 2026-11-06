@@ -96,7 +96,9 @@ test.describe('the live event layer', () => {
     await open(page, '/tasks/task-2');
     const feed = feedOf(page);
     await expect(feed).toHaveAttribute('data-connection', 'live');
-    await expect(feed.getByText('Waiting for a decision')).toBeVisible();
+    await expect(
+      page.getByTestId('now').getByText('Waiting for a decision'),
+    ).toBeVisible();
 
     await page.getByRole('tab', { name: /^Events/ }).click();
     const notes = feed.locator('li[data-kind="note"]');
