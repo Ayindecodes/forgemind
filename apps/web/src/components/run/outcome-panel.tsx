@@ -28,11 +28,13 @@ export function OutcomePanel({ run, view }: { run: Run; view: RunView }) {
           Outcome
         </h2>
         <Status status={runStatus(run)} size="sm" />
-        <Status
-          status={verificationStatus[run.verification]}
-          size="sm"
-          label={verificationLabel[run.verification]}
-        />
+        {verificationStatus[run.verification] !== runStatus(run) && (
+          <Status
+            status={verificationStatus[run.verification]}
+            size="sm"
+            label={verificationLabel[run.verification]}
+          />
+        )}
       </div>
       <dl className="grid gap-x-6 gap-y-2 px-4 py-3 text-sm sm:grid-cols-[auto_1fr]">
         <dt className="text-fg-secondary">Verification</dt>

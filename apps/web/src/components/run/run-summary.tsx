@@ -46,13 +46,14 @@ export function RunSummary({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
         <LiveBadge connection={connection} onRetry={onRetry} />
         <Status status={runStatus(run)} size="sm" />
-        {run.status !== 'queued' && (
-          <Status
-            status={verificationStatus[run.verification]}
-            size="sm"
-            label={verificationLabel[run.verification]}
-          />
-        )}
+        {run.status !== 'queued' &&
+          verificationStatus[run.verification] !== runStatus(run) && (
+            <Status
+              status={verificationStatus[run.verification]}
+              size="sm"
+              label={verificationLabel[run.verification]}
+            />
+          )}
         <span className="text-sm text-fg-secondary">
           Attempt {run.retries.used + 1} of {run.retries.max + 1}
         </span>
