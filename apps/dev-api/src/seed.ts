@@ -448,6 +448,8 @@ export function seedStore(store: Store, seed: number) {
     decision?: Task['decision'];
     createdBy?: User;
     cancelled?: boolean;
+    /** A run that happened before the one that counts, kept on the record. */
+    earlierRun?: { scenario: ScenarioName; minutesBefore: number };
   };
 
   const seeds: TaskSeed[] = [
@@ -519,6 +521,7 @@ export function seedStore(store: Store, seed: number) {
       scenario: 'happy',
       startedMinutesAgo: 4 * 1440,
       decision: 'approved',
+      earlierRun: { scenario: 'failed', minutesBefore: 90 },
     },
     {
       repo: 'repo-2',
@@ -606,6 +609,15 @@ export function seedStore(store: Store, seed: number) {
       id,
       label: item.title,
     });
+
+    if (item.earlierRun) {
+      const earlier = store.createRun(created, item.earlierRun.scenario, {
+        startedAt: ago(item.startedMinutesAgo + item.earlierRun.minutesBefore),
+        elapsedMs: Number.POSITIVE_INFINITY,
+      });
+      // The earlier run is history; the task carries on with the next one.
+      earlier.player?.stop();
+    }
 
     const entry = store.createRun(created, item.scenario, {
       startedAt,
