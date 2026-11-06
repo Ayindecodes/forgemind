@@ -57,6 +57,8 @@ export function DialogContent({
             variant="ghost"
             size="sm"
             icon={<X />}
+            // A tooltip here would open on autofocus and eat the first Escape.
+            tooltip={false}
             className="absolute top-3 right-3"
           />
         </RadixDialog.Close>

@@ -1,5 +1,6 @@
 'use client';
 
+import { Check } from 'lucide-react';
 import { DropdownMenu } from 'radix-ui';
 import type { ComponentProps } from 'react';
 
@@ -74,5 +75,25 @@ export function MenuSeparator({
       className={cx('my-1 h-px bg-line', className)}
       {...props}
     />
+  );
+}
+
+export const MenuRadioGroup = DropdownMenu.RadioGroup;
+
+export function MenuRadioItem({
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof DropdownMenu.RadioItem>) {
+  return (
+    <DropdownMenu.RadioItem
+      className={cx(menuItem, 'relative pl-7', className)}
+      {...props}
+    >
+      <DropdownMenu.ItemIndicator className="absolute left-2 flex">
+        <Check aria-hidden="true" className="size-3.5" />
+      </DropdownMenu.ItemIndicator>
+      {children}
+    </DropdownMenu.RadioItem>
   );
 }
