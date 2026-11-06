@@ -1,0 +1,62 @@
+/*
+ * react-diff-view, dressed in the design tokens. The library paints with
+ * its own custom properties; every one of them maps to a token here, so the
+ * diff follows the theme and the contrast audit covers its colours.
+ */
+
+.diff {
+  --diff-background-color: transparent;
+  --diff-text-color: var(--color-code-foreground);
+  --diff-font-family: var(--font-mono);
+  --diff-selection-background-color: var(--color-accent-subtle);
+  --diff-selection-text-color: var(--color-fg);
+  --diff-gutter-insert-background-color: var(--color-success-subtle);
+  --diff-gutter-insert-text-color: var(--color-success-fg);
+  --diff-gutter-delete-background-color: var(--color-error-subtle);
+  --diff-gutter-delete-text-color: var(--color-error-fg);
+  --diff-gutter-selected-background-color: var(--color-accent-subtle);
+  --diff-gutter-selected-text-color: var(--color-accent-fg);
+  --diff-code-insert-background-color: color-mix(
+    in oklab,
+    var(--color-success-subtle) 55%,
+    transparent
+  );
+  --diff-code-insert-text-color: var(--color-code-foreground);
+  --diff-code-delete-background-color: color-mix(
+    in oklab,
+    var(--color-error-subtle) 55%,
+    transparent
+  );
+  --diff-code-delete-text-color: var(--color-code-foreground);
+  --diff-code-insert-edit-background-color: var(--color-success-subtle);
+  --diff-code-insert-edit-text-color: var(--color-code-foreground);
+  --diff-code-delete-edit-background-color: var(--color-error-subtle);
+  --diff-code-delete-edit-text-color: var(--color-code-foreground);
+  --diff-code-selected-background-color: var(--color-accent-subtle);
+  --diff-code-selected-text-color: var(--color-code-foreground);
+  --diff-omit-gutter-line-color: var(--color-fg-muted);
+  font-size: var(--text-xs);
+}
+
+.diff-gutter {
+  color: var(--color-fg-muted);
+}
+
+.diff-gutter:hover {
+  color: var(--color-fg);
+  background-color: var(--color-hover);
+}
+
+.diff-code {
+  padding-left: 0.75rem;
+}
+
+.diff-decoration-content {
+  background-color: var(--color-hover);
+  color: var(--color-fg-secondary);
+  padding: 0.125rem 0.75rem;
+}
+
+.diff-widget-content {
+  background-color: var(--color-elevated);
+}
