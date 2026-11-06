@@ -60,6 +60,16 @@
   --color-info-fg: #7fb8e6;
   --color-info-subtle: rgb(127 184 230 / 0.12);
 
+  /* Code. Only ever on solid surfaces, so audited against those. */
+  --color-code-foreground: #f5f7fa;
+  --color-code-token-keyword: #c5a3ff;
+  --color-code-token-constant: #f0b35a;
+  --color-code-token-string: #4cc38a;
+  --color-code-token-function: #6ea8fe;
+  --color-code-token-parameter: #a1a8b3;
+  --color-code-token-comment: #8d96a3;
+  --color-code-token-link: #a6c8ff;
+
   /* Glass */
   --color-glass: rgb(11 13 16 / 0.78);
   --color-glass-strong: rgb(11 13 16 / 0.88);
@@ -185,6 +195,16 @@
   --color-error-subtle: rgb(194 64 47 / 0.1);
   --color-info-fg: #1a5f96;
   --color-info-subtle: rgb(31 106 165 / 0.1);
+
+  /* Code */
+  --color-code-foreground: #15181d;
+  --color-code-token-keyword: #7a3fd1;
+  --color-code-token-constant: #855300;
+  --color-code-token-string: #0a6b45;
+  --color-code-token-function: #1a52c0;
+  --color-code-token-parameter: #4a5260;
+  --color-code-token-comment: #576070;
+  --color-code-token-link: #1a52c0;
 
   /* Glass */
   --color-glass: rgb(255 255 255 / 0.72);

@@ -3,6 +3,7 @@ export type Theme = (typeof themes)[number];
 
 export type TokenRole =
   | 'text'
+  | 'code'
   | 'on-accent'
   | 'surface'
   | 'state'
@@ -30,6 +31,7 @@ const SURFACES = ['canvas', 'surface', 'elevated'];
 const DECORATIVE = ['line', 'line-subtle', 'glass-line', 'glass-highlight'];
 
 export function tokenRole(name: string): TokenRole | undefined {
+  if (name.startsWith('code-')) return 'code';
   if (name === 'on-accent') return 'on-accent';
   if (name === 'accent' || name === 'accent-hover') return 'accent-fill';
   if (name === 'scrim') return 'scrim';
@@ -206,7 +208,9 @@ export function auditContrast(css: string): ContrastResult[] {
     for (const stack of backgroundStacks(tokens)) {
       for (const name of Object.keys(tokens)) {
         const role = tokenRole(name);
+        const onSolid = !stack[0]?.startsWith('backdrop');
         if (role === 'text') check(name, stack, TEXT_RATIO);
+        if (role === 'code' && onSolid) check(name, stack, TEXT_RATIO);
         if (role === 'control' || role === 'accent-fill') {
           check(name, stack, CONTROL_RATIO);
         }
