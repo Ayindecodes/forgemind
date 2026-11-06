@@ -374,13 +374,17 @@ export function createApp(store: Store) {
   return app;
 }
 
-const speed = Number(process.env.DEV_API_SPEED ?? 1);
+const speed =
+  process.env.DEV_API_SPEED === 'Infinity'
+    ? Infinity
+    : Number(process.env.DEV_API_SPEED ?? 1);
 const port = process.env.PORT ?? '4000';
 
 export const app = createApp(
   createStore({
     seed: Number(process.env.DEV_API_SEED ?? 1),
-    speed: Number.isFinite(speed) && speed > 0 ? speed : 1,
+    speed:
+      speed === Infinity || (Number.isFinite(speed) && speed > 0) ? speed : 1,
     apiOrigin: process.env.DEV_API_ORIGIN ?? `http://localhost:${port}`,
     webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:3200',
   }),
