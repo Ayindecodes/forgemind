@@ -8,6 +8,7 @@ import { cx } from '@/lib/cx';
 const pages = [
   { href: '/design', label: 'Foundations' },
   { href: '/design/components', label: 'Components' },
+  { href: '/design/logs', label: 'Logs' },
 ];
 
 export function DesignNav() {
