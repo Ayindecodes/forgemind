@@ -92,7 +92,7 @@ export function RunWorkspace({ taskId }: { taskId: string }) {
           <PlanPanel view={view} />
         </div>
         <div className="lg:col-start-2 lg:row-start-3">
-          <DetailsTabs view={view} events={events} />
+          <DetailsTabs key={run.id} view={view} events={events} />
         </div>
       </div>
     </div>

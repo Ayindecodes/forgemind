@@ -1,13 +1,17 @@
 'use client';
 
 import type { Event } from '@forgemind/contract';
+import { useState } from 'react';
 
+import { LogViewer } from '@/components/logs/log-viewer';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Status } from '@/components/ui/status';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cx } from '@/lib/cx';
 import { formatDuration } from '@/lib/format';
 import type { CommandView, RunView } from '@/lib/live/derive';
+import { useLogLines } from '@/lib/logs/use-log-lines';
 import { stageLabels } from '@/lib/run-labels';
 
 import { EventList } from './event-list';
@@ -37,8 +41,17 @@ export function DetailsTabs({
   view: RunView;
   events: readonly Event[];
 }) {
+  const [tab, setTab] = useState('files');
+  const [commandId, setCommandId] = useState<string | null>(null);
+  const logLines = useLogLines(events);
+
   return (
-    <Tabs defaultValue="files" className="material-solid" data-testid="details">
+    <Tabs
+      value={tab}
+      onValueChange={setTab}
+      className="material-solid"
+      data-testid="details"
+    >
       <TabsList aria-label="Run details" className="border-b border-line px-2">
         <TabsTrigger value="files">
           Files{view.changed.length > 0 ? ` (${view.changed.length})` : ''}
@@ -49,6 +62,9 @@ export function DetailsTabs({
         <TabsTrigger value="checks">
           Checks{view.checks.length > 0 ? ` (${view.checks.length})` : ''}
         </TabsTrigger>
+        <TabsTrigger value="logs">
+          Logs ({logLines.length.toLocaleString()})
+        </TabsTrigger>
         <TabsTrigger value="events">Events ({events.length})</TabsTrigger>
       </TabsList>
 
@@ -56,7 +72,21 @@ export function DetailsTabs({
         <Files view={view} />
       </TabsContent>
       <TabsContent value="commands" className="text-sm">
-        <Commands commands={view.commands} />
+        <Commands
+          commands={view.commands}
+          onShowInLogs={(id) => {
+            setCommandId(id);
+            setTab('logs');
+          }}
+        />
+      </TabsContent>
+      <TabsContent value="logs">
+        <LogViewer
+          lines={logLines}
+          commandId={commandId}
+          onCommandIdChange={setCommandId}
+          className="h-96"
+        />
       </TabsContent>
       <TabsContent value="checks" className="text-sm">
         <Checks view={view} />
@@ -115,7 +145,13 @@ function Files({ view }: { view: RunView }) {
   );
 }
 
-function Commands({ commands }: { commands: CommandView[] }) {
+function Commands({
+  commands,
+  onShowInLogs,
+}: {
+  commands: CommandView[];
+  onShowInLogs: (commandId: string) => void;
+}) {
   if (commands.length === 0) return <Empty>No commands have run yet.</Empty>;
 
   return (
@@ -164,7 +200,16 @@ function Commands({ commands }: { commands: CommandView[] }) {
                   <Badge tone="error">exit {command.exitCode}</Badge>
                 )}
               </summary>
-              <div className="px-4 pb-3">
+              <div className="flex flex-col gap-2 px-4 pb-3">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="self-start"
+                  onClick={() => onShowInLogs(command.id)}
+                  data-testid="show-in-logs"
+                >
+                  Show in logs
+                </Button>
                 {command.output.length === 0 ? (
                   <p className="text-xs text-fg-muted">No output.</p>
                 ) : (
