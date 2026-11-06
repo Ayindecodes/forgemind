@@ -68,6 +68,15 @@ test.describe('the execution workspace', () => {
   });
 
   test('failed attempts stay visible after a retry', async ({ page }) => {
+    // The seeded run is still playing its last half minute when the API has
+    // just started; the outcome exists only once it has finished.
+    await expect
+      .poll(
+        async () =>
+          (await fetchJson<{ status: string }>(page, '/runs/run-1')).status,
+        { timeout: 90_000 },
+      )
+      .not.toBe('running');
     await open(page, '/tasks/task-1');
 
     await expect(page.getByTestId('stage-testing')).toHaveAttribute(
@@ -196,6 +205,31 @@ test.describe('the execution workspace', () => {
         .locator('[data-testid^="stage-"][data-status="skipped"]')
         .count(),
     ).toBeGreaterThan(0);
+  });
+
+  test('the logs tab shows the output and can focus one command', async ({
+    page,
+  }) => {
+    await open(page, '/tasks/task-2');
+    await page.getByRole('tab', { name: /^Logs/ }).click();
+    const count = page.getByTestId('log-count');
+    await expect(count).toHaveText(/^\d+ lines$/);
+    // The commands that ran are in the log, found by search rather than by
+    // what happens to be rendered.
+    await page.getByTestId('log-search').fill('$ pnpm');
+    await expect(page.getByTestId('log-match-count')).toHaveText(/^1 of \d+$/);
+    await page.getByTestId('log-search').fill('');
+
+    await page.getByRole('tab', { name: /^Commands/ }).click();
+    await page.getByTestId('command').first().locator('summary').click();
+    await page.getByTestId('show-in-logs').first().click();
+    await expect(page.getByRole('tab', { name: /^Logs/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(count).toHaveText(/^\d+ of \d+ lines$/);
+    await page.getByRole('button', { name: /One command/ }).click();
+    await expect(count).toHaveText(/^\d+ lines$/);
   });
 
   test('on a phone it stacks, outcome first, and nothing overflows', async ({
