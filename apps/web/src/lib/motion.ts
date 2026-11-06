@@ -21,6 +21,10 @@ export const timeouts = {
   tooltip: 400,
   /** Toasts stay long enough to read, then leave on their own. */
   toast: 6000,
+  /** How long a copy button shows that it copied. */
+  copied: 1500,
+  /** How long the first key of a two-key shortcut waits for the second. */
+  keySequence: 1000,
 } as const;
 
 type Bezier = [number, number, number, number];
