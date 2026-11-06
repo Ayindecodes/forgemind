@@ -127,7 +127,7 @@ export function Overview() {
                   className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-sm hover:bg-hover"
                 >
                   <Status status={taskStatus[task.status]} size="sm" iconOnly />
-                  <span className="min-w-0 flex-1 truncate font-medium">
+                  <span className="min-w-0 flex-1 basis-48 truncate font-medium">
                     {task.title}
                   </span>
                   <span className="font-mono text-xs text-fg-secondary">
@@ -183,7 +183,7 @@ export function Overview() {
                     data-testid={`repository-${repo.id}`}
                     className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-sm hover:bg-hover"
                   >
-                    <span className="min-w-0 flex-1 truncate font-mono">
+                    <span className="min-w-0 flex-1 basis-48 truncate font-mono">
                       {repo.fullName}
                     </span>
                     <span className="text-xs text-fg-secondary">
