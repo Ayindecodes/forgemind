@@ -869,6 +869,21 @@ export function seedStore(store: Store, seed: number) {
       tool: 'semgrep',
       status: 'fixed',
     }),
+    // A finding the scanner raised without capturing evidence, on a line the
+    // patch does not touch. The review workspace has to say both things.
+    finding('finding-12', 'repo-1', {
+      title: 'Retry loop may spin when the budget is zero',
+      severity: 'low',
+      confidence: 'suspected',
+      category: 'other',
+      location: { path: 'src/retry.ts', line: 120 },
+      evidence: '',
+      remediation:
+        'Add a guard before the loop, or a test that proves it exits.',
+      advisoryUrl: null,
+      tool: 'review-agent',
+      runId: data.tasks.get('task-2')?.runId ?? null,
+    }),
   ];
   for (const item of findings) data.findings.set(item.id, item);
 
