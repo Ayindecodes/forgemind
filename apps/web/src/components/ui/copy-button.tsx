@@ -11,10 +11,13 @@ export function CopyButton({
   text,
   label = 'Copy',
   className,
+  disabled,
 }: {
-  text: string;
+  /** The text, or a function that builds it only when the button is used. */
+  text: string | (() => string);
   label?: string;
   className?: string;
+  disabled?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -23,7 +26,9 @@ export function CopyButton({
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(
+        typeof text === 'function' ? text() : text,
+      );
       setCopied(true);
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), timeouts.copied);
@@ -44,6 +49,7 @@ export function CopyButton({
         variant="ghost"
         size="sm"
         onClick={copy}
+        disabled={disabled}
         className={className}
         data-copied={copied || undefined}
       />
