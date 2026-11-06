@@ -77,7 +77,7 @@ function Branch({
               onClick={() => onSelect(node.path)}
               style={{ paddingLeft: `${depth * 0.75 + 0.5}rem` }}
               className={cx(
-                'flex w-full items-center gap-2 py-1 pr-2 text-left text-sm',
+                'flex w-full items-center gap-2 py-1 pr-2 text-left text-sm pointer-coarse:py-2',
                 selected === node.path
                   ? 'bg-accent-subtle text-fg'
                   : 'text-fg-secondary hover:bg-hover hover:text-fg',

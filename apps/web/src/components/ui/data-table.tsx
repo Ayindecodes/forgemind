@@ -221,7 +221,7 @@ export function DataTable<T extends RowData>({
                         <button
                           type="button"
                           onClick={column.getToggleSortingHandler()}
-                          className="press -mx-1.5 flex h-7 items-center gap-1 rounded-sm px-1.5 hover:bg-hover hover:text-fg"
+                          className="press -mx-1.5 flex h-7 items-center pointer-coarse:h-9 gap-1 rounded-sm px-1.5 hover:bg-hover hover:text-fg"
                         >
                           {content}
                           {sorted === 'asc' ? (

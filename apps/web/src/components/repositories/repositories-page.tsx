@@ -66,7 +66,7 @@ const repositoryColumns = columns.columns([
       <span className="flex min-w-0 items-center gap-2">
         <Link
           href={`/repositories/${row.original.id}`}
-          className="truncate font-mono text-code hover:underline"
+          className="touch-target truncate font-mono text-code hover:underline"
           data-testid={`repository-${row.original.id}`}
         >
           {getValue()}

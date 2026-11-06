@@ -293,7 +293,7 @@ function FindingCard({
           {repository && (
             <Link
               href={`/repositories/${repository.id}`}
-              className="font-mono text-xs hover:underline"
+              className="touch-target font-mono text-xs hover:underline"
             >
               {repository.fullName}
             </Link>
@@ -303,7 +303,7 @@ function FindingCard({
               href={href}
               target="_blank"
               rel="noreferrer"
-              className="font-mono text-xs hover:underline"
+              className="touch-target font-mono text-xs hover:underline"
               data-testid="finding-code"
             >
               {location}

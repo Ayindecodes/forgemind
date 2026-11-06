@@ -26,7 +26,7 @@ export function OrgMenu() {
         <button
           type="button"
           data-testid="org-trigger"
-          className="press flex h-8 max-w-56 items-center gap-1.5 rounded-md px-2 text-sm font-medium transition-colors hover:bg-hover"
+          className="press flex h-8 max-w-56 items-center pointer-coarse:h-10 gap-1.5 rounded-md px-2 text-sm font-medium transition-colors hover:bg-hover"
         >
           <span className="truncate">{org.name}</span>
           <ChevronsUpDown

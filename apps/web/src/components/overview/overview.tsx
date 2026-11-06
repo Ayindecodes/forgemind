@@ -249,7 +249,7 @@ export function Overview() {
                     {href ? (
                       <Link
                         href={href}
-                        className="font-mono text-xs underline-offset-2 hover:underline"
+                        className="touch-target font-mono text-xs underline-offset-2 hover:underline"
                       >
                         {event.target.label}
                       </Link>

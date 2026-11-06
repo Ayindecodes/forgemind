@@ -55,7 +55,7 @@ export function Notifications() {
         <div className="flex h-10 items-center justify-between border-b border-line pr-1.5 pl-3">
           <Link
             href="/notifications"
-            className="text-sm font-medium hover:underline"
+            className="touch-target text-sm font-medium hover:underline"
             data-testid="see-all-notifications"
           >
             Notifications

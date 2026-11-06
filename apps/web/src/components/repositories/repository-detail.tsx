@@ -220,7 +220,7 @@ export function RepositoryDetail({ id }: { id: string }) {
                     )}
                     target="_blank"
                     rel="noreferrer"
-                    className="font-mono text-xs text-fg-secondary hover:underline"
+                    className="touch-target font-mono text-xs text-fg-secondary hover:underline"
                     data-testid="finding-location"
                   >
                     {finding.location.path}
@@ -287,7 +287,7 @@ function AnalysisReport({
       href={codeHref(repository, report.commit, path, line)}
       target="_blank"
       rel="noreferrer"
-      className="font-mono text-xs hover:underline"
+      className="touch-target font-mono text-xs hover:underline"
       data-testid="code-link"
     >
       {path}
@@ -402,7 +402,7 @@ function AnalysisReport({
                         href={dep.advisoryUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-sans text-fg-secondary hover:underline"
+                        className="touch-target font-sans text-fg-secondary hover:underline"
                       >
                         advisory
                       </a>

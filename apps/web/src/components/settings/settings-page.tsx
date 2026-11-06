@@ -434,7 +434,7 @@ function RepositoryAccess({ actor }: { actor: Role | null }) {
         {connected.length === 1 ? 'repository' : 'repositories'}.{' '}
         <Link
           href="/repositories"
-          className="underline-offset-2 hover:underline"
+          className="touch-target underline-offset-2 hover:underline"
         >
           Manage them
         </Link>
@@ -509,7 +509,7 @@ function AuditPanel() {
                 {href ? (
                   <Link
                     href={href}
-                    className="font-mono text-xs hover:underline"
+                    className="touch-target font-mono text-xs hover:underline"
                   >
                     {event.target.label}
                   </Link>

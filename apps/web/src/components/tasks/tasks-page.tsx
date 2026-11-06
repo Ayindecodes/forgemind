@@ -35,7 +35,7 @@ const taskColumns = columns.columns([
     cell: ({ row, getValue }) => (
       <Link
         href={`/tasks/${row.original.id}`}
-        className="truncate font-medium hover:underline"
+        className="touch-target truncate font-medium hover:underline"
         data-testid={`task-${row.original.id}`}
       >
         {getValue()}

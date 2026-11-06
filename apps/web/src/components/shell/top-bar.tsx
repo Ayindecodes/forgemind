@@ -53,7 +53,7 @@ export function TopBar() {
             type="button"
             onClick={openPalette}
             data-testid="search-trigger"
-            className="press hidden h-8 w-56 items-center gap-2 rounded-md border border-line-control bg-elevated px-2.5 text-sm text-fg-muted transition-colors hover:border-fg-muted sm:flex"
+            className="press hidden h-8 w-56 items-center pointer-coarse:h-10 gap-2 rounded-md border border-line-control bg-elevated px-2.5 text-sm text-fg-muted transition-colors hover:border-fg-muted sm:flex"
           >
             <Search aria-hidden="true" className="size-4" />
             <span className="flex-1 text-left">Search</span>

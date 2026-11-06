@@ -18,3 +18,15 @@
 @custom-variant active (&:active, &[data-preview~='active']);
 
 @custom-variant focus-visible (&:focus-visible, &[data-preview~='focus']);
+
+/*
+ * A text link in a row is 16px tall. Under a coarse pointer the hit area
+ * grows to 36px through padding, and the negative margin keeps the layout
+ * exactly where it was.
+ */
+@utility touch-target {
+  @media (pointer: coarse) {
+    padding-block: 0.625rem;
+    margin-block: -0.625rem;
+  }
+}

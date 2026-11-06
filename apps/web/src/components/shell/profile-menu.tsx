@@ -51,7 +51,7 @@ export function ProfileMenu() {
           type="button"
           aria-label={`Account, ${user.name}`}
           data-testid="profile-trigger"
-          className="press flex h-8 items-center gap-1.5 rounded-full pr-1.5 pl-0.5 transition-colors hover:bg-hover"
+          className="press flex h-8 items-center gap-1.5 rounded-full pointer-coarse:h-10 pr-1.5 pl-0.5 transition-colors hover:bg-hover"
         >
           <Avatar name={user.name} />
           <ChevronDown aria-hidden="true" className="size-3.5 text-fg-muted" />

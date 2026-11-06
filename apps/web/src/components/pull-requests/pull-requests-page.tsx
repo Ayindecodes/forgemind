@@ -40,7 +40,7 @@ const prColumns = columns.columns([
           href={row.original.url}
           target="_blank"
           rel="noreferrer"
-          className="truncate hover:underline"
+          className="touch-target truncate hover:underline"
           data-testid={`pr-${row.original.id}`}
         >
           <span className="font-mono text-fg-secondary">#{getValue()}</span>{' '}
@@ -108,7 +108,7 @@ const prColumns = columns.columns([
     cell: ({ getValue }) => (
       <Link
         href={`/tasks/${getValue()}`}
-        className="font-mono text-xs hover:underline"
+        className="touch-target font-mono text-xs hover:underline"
         data-testid={`pr-task-${getValue()}`}
       >
         {getValue()}
