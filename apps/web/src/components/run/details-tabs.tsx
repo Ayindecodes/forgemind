@@ -41,7 +41,13 @@ export function DetailsTabs({
   view: RunView;
   events: readonly Event[];
 }) {
-  const [tab, setTab] = useState('files');
+  const [tab, setTab] = useState(() => {
+    const hash =
+      typeof window === 'undefined' ? '' : window.location.hash.slice(1);
+    return ['files', 'commands', 'checks', 'logs', 'events'].includes(hash)
+      ? hash
+      : 'files';
+  });
   const [commandId, setCommandId] = useState<string | null>(null);
   const logLines = useLogLines(events);
 
