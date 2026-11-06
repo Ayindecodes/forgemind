@@ -1,6 +1,10 @@
 'use client';
 
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
+
+import { Button } from '@/components/ui/button';
 
 import { SkeletonText } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/states';
@@ -24,8 +28,16 @@ import { Timeline } from './timeline';
 
 export function RunWorkspace({ taskId }: { taskId: string }) {
   const task = useTask(taskId);
+  const params = useSearchParams();
+  // An older run from the history replays from its stored events.
+  const requestedRun = params.get('run');
+  const runId = requestedRun ?? task.data?.runId;
+  const olderRun =
+    requestedRun !== null &&
+    task.data !== undefined &&
+    requestedRun !== task.data.runId;
   const pullRequests = usePullRequests(task.data?.status === 'completed');
-  const { live, loading, loadError, retry } = useLiveRun(task.data?.runId);
+  const { live, loading, loadError, retry } = useLiveRun(runId);
   const view = useMemo(
     () => (live ? deriveRunView(live.events, live.run) : null),
     [live],
@@ -65,12 +77,28 @@ export function RunWorkspace({ taskId }: { taskId: string }) {
       data-event-count={events.length}
       className="flex flex-col gap-4"
     >
+      {olderRun && (
+        <p
+          role="status"
+          data-testid="older-run"
+          className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-info-subtle px-4 py-2 text-sm text-info-fg"
+        >
+          An earlier run of this task, replayed from its recorded events.
+          <Button asChild size="sm" variant="secondary">
+            <Link href={`/tasks/${taskId}`}>Latest run</Link>
+          </Button>
+        </p>
+      )}
       <RunSummary
         run={run}
         events={events}
         connection={connection}
         onRetry={retry}
-        actions={<TaskActions task={task.data} pullRequest={pullRequest} />}
+        actions={
+          olderRun ? undefined : (
+            <TaskActions task={task.data} pullRequest={pullRequest} />
+          )
+        }
       />
       {error && (
         <p
