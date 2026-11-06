@@ -245,6 +245,7 @@ export function createStore(options: StoreOptions = {}) {
   function notify(
     organizationId: string,
     input: Omit<Notification, 'id' | 'readAt' | 'createdAt'>,
+    createdAt = now().toISOString(),
   ) {
     const id = nextId('note');
     data.notifications.set(id, {
@@ -252,11 +253,16 @@ export function createStore(options: StoreOptions = {}) {
       id,
       organizationId,
       readAt: null,
-      createdAt: now().toISOString(),
+      createdAt,
     });
   }
 
-  function syncTask(entry: RunRecord) {
+  /*
+   * The task follows its run. `at` is the time of the event that moved it,
+   * so seeded history keeps its own times instead of the moment the server
+   * started.
+   */
+  function syncTask(entry: RunRecord, at: string) {
     const current = data.tasks.get(entry.run.taskId);
     if (!current || current.runId !== entry.run.id) return;
 
@@ -272,7 +278,7 @@ export function createStore(options: StoreOptions = {}) {
       ...current,
       status: taskStatus,
       branch: entry.run.branch,
-      updatedAt: entry.run.finishedAt ?? now().toISOString(),
+      updatedAt: entry.run.finishedAt ?? at,
     });
   }
 
@@ -289,18 +295,22 @@ export function createStore(options: StoreOptions = {}) {
 
     entry.events.push(event);
     entry.run = reduceRun(entry.run, event);
-    syncTask(entry);
+    syncTask(entry, event.at);
     listeners.get(runId)?.forEach((listener) => listener(event));
 
     if (event.type === 'approval.requested') {
       const owner = data.tasks.get(entry.run.taskId);
       if (owner) {
-        notify(owner.organizationId, {
-          kind: 'task_awaiting_approval',
-          title: `${owner.title} is ready for review`,
-          body: `Outcome: ${entry.run.outcome ?? 'unknown'}.`,
-          href: `/tasks/${owner.id}`,
-        });
+        notify(
+          owner.organizationId,
+          {
+            kind: 'task_awaiting_approval',
+            title: `${owner.title} is ready for review`,
+            body: `Outcome: ${entry.run.outcome ?? 'unknown'}.`,
+            href: `/tasks/${owner.id}`,
+          },
+          event.at,
+        );
       }
     }
 

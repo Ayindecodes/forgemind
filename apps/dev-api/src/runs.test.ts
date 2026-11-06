@@ -44,3 +44,29 @@ describe('the run list', () => {
     expect(store.runs('org-2')).toEqual([]);
   });
 });
+
+describe('seeded history keeps its own times', () => {
+  const store = createStore({ speed: Infinity, now: clock });
+
+  it('stamps a task with the event that moved it, not the server start', () => {
+    const task = store
+      .tasks('org-1')
+      .find(
+        (item) => item.id === 'task-2' && item.status === 'awaiting_approval',
+      );
+    expect(task).toBeTruthy();
+    const events = store.eventsAfter('org-1', task!.runId, 0);
+    const last = events.at(-1)!.at;
+    expect(task!.updatedAt).toBe(last);
+    expect(new Date(last).getTime()).toBeLessThan(clock().getTime());
+  });
+
+  it('dates the review notification to that moment too', () => {
+    const task = store.tasks('org-1').find((item) => item.id === 'task-2')!;
+    const note = store
+      .notifications('org-1')
+      .find((item) => item.href === `/tasks/${task.id}`);
+    expect(note).toBeTruthy();
+    expect(note!.createdAt).toBe(task.updatedAt);
+  });
+});
