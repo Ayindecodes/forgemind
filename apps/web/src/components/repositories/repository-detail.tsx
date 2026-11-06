@@ -2,7 +2,7 @@
 
 import type { Repository, RepositoryAnalysis, Task } from '@forgemind/contract';
 import { useQuery } from '@tanstack/react-query';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Plus } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
@@ -129,22 +129,34 @@ export function RepositoryDetail({ id }: { id: string }) {
           </span>
         }
         actions={
-          <Status
-            status={
-              repo.status === 'connected'
-                ? 'passed'
-                : repo.status === 'analyzing'
-                  ? 'running'
-                  : repo.status === 'error'
-                    ? 'failed'
-                    : 'cancelled'
-            }
-            label={
-              repo.status === 'connected' && repo.lastAnalyzedAt
-                ? `Indexed ${formatRelative(repo.lastAnalyzedAt)} at ${repo.lastAnalyzedCommit ?? ''}`
-                : (repo.statusMessage ?? undefined)
-            }
-          />
+          <>
+            <Status
+              status={
+                repo.status === 'connected'
+                  ? 'passed'
+                  : repo.status === 'analyzing'
+                    ? 'running'
+                    : repo.status === 'error'
+                      ? 'failed'
+                      : 'cancelled'
+              }
+              label={
+                repo.status === 'connected' && repo.lastAnalyzedAt
+                  ? `Indexed ${formatRelative(repo.lastAnalyzedAt)} at ${repo.lastAnalyzedCommit ?? ''}`
+                  : (repo.statusMessage ?? undefined)
+              }
+            />
+            {repo.status !== 'revoked' && (
+              <Button asChild variant="primary" icon={<Plus />}>
+                <Link
+                  href={`/tasks/new?repository=${repo.id}`}
+                  data-testid="new-task"
+                >
+                  New task
+                </Link>
+              </Button>
+            )}
+          </>
         }
       />
 

@@ -97,3 +97,18 @@ test.describe('the repository detail', () => {
     expect(await axeViolations(page)).toEqual([]);
   });
 });
+
+test('starts a task on this repository without leaving the path', async ({
+  page,
+}) => {
+  const repository = await fetchJson<{ fullName: string }>(
+    page,
+    '/repositories/repo-1',
+  );
+  await open(page, '/repositories/repo-1');
+  await page.getByTestId('new-task').click();
+  await expect(page).toHaveURL(/\/tasks\/new\?repository=repo-1$/);
+  await expect(page.getByTestId('composer-repository')).toContainText(
+    repository.fullName,
+  );
+});
