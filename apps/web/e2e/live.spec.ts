@@ -5,7 +5,7 @@ import { open } from './support/open';
 
 const api = 'http://localhost:4110';
 
-const feedOf = (page: Page) => page.getByTestId('live-feed');
+const feedOf = (page: Page) => page.getByTestId('run-workspace');
 
 /** The count and the last sequence number, read in one go. */
 const progress = (page: Page) =>
@@ -68,6 +68,7 @@ test.describe('the live event layer', () => {
     const after = await progress(page);
     expect(after.count).toBe(after.lastSeq);
 
+    await page.getByRole('tab', { name: /^Events/ }).click();
     await expect(feed.getByRole('list', { name: 'Events' })).toBeVisible();
     await expect(feed.getByText('Attempt 1 of')).toBeVisible();
   });
@@ -97,6 +98,7 @@ test.describe('the live event layer', () => {
     await expect(feed).toHaveAttribute('data-connection', 'live');
     await expect(feed.getByText('Waiting for a decision')).toBeVisible();
 
+    await page.getByRole('tab', { name: /^Events/ }).click();
     const notes = feed.locator('li[data-kind="note"]');
     await expect(notes.first()).toBeVisible();
     await expect(notes.first().getByText('Agent note')).toBeVisible();
