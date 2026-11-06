@@ -78,6 +78,52 @@ export const patches: Record<
 +});
 `,
   },
+  'package.json': {
+    path: 'package.json',
+    previousPath: null,
+    language: 'json',
+    explanation:
+      'Moves both packages past their advisories. jsonwebtoken 9 drops the insecure default algorithms, so the verify call is checked next.',
+    patch: `@@ -19,11 +19,11 @@
+   "dependencies": {
+     "express": "^4.19.2",
+     "hono": "^4.6.0",
+-    "jsonwebtoken": "^8.5.1",
++    "jsonwebtoken": "^9.0.2",
+     "knex": "^3.1.0",
+-    "lodash": "^4.17.15",
++    "lodash": "^4.17.21",
+     "pg": "^8.12.0",
+     "zod": "^3.23.8"
+   },
+   "devDependencies": {
+     "vitest": "^2.1.0"
+`,
+  },
+  'pnpm-lock.yaml': {
+    path: 'pnpm-lock.yaml',
+    previousPath: null,
+    language: 'yaml',
+    explanation: null,
+    patch: `@@ -1203,16 +1203,16 @@ packages:
+-  jsonwebtoken@8.5.1:
+-    resolution: {integrity: sha512-XjwVfRS6jTMsqYs0EsuJ4LGxXV14zQybNd4L2r0UvbVnSF9Af8x7p5MzbJ90Ioz/9TI41/hTCvznF/loiSzn8w==}
+-    engines: {node: '>=4', npm: '>=1.4.28'}
++  jsonwebtoken@9.0.2:
++    resolution: {integrity: sha512-PRp66vJ865SSqOlgDS8Ouxt0hT3Xv+DJc8bv7bb0b9tOlJ1cIZaXp9/0fZlOEgqXSJ9/zc9S1kWz6XaO4m5hHw==}
++    engines: {node: '>=12', npm: '>=6'}
+
+-  lodash@4.17.15:
+-    resolution: {integrity: sha512-8xOcRHvCjnocdS5cpwXQXVzmmh5e5+saE2QGoeQmbKmRS6J3VQppPOIt0MnmE+4xlZoumy0GPG0D0MVIQbNA1A==}
++  lodash@4.17.21:
++    resolution: {integrity: sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==}
+
+-  jws@3.2.2:
+-    resolution: {integrity: sha512-YHlZCB6lMTllWDtSPHz/ZXTsi8S00usEV6v1tjq8tOUZzw7DpSDWVXjXDre6ed1w/pd495ODpHZYSdkRTsa0HA==}
++  jws@4.0.0:
++    resolution: {integrity: sha512-KDncfTmOQmnSeqpr0zc/zL5gfR5nmTv8QCy+tqbZT6tEtyf+p4Y/K8hR1YJ1Dz0rAvUsNcTtx0k3O/g6EGzUHw==}
+`,
+  },
   'src/types.ts': {
     path: 'src/types.ts',
     previousPath: null,

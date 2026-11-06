@@ -21,6 +21,8 @@ export type ScenarioContext = {
   baseCommit: string;
   branch: string;
   maxRetries: number;
+  /** What the task is about; a dependency upgrade changes different files. */
+  category?: TaskCategory;
 };
 
 class Script {
@@ -245,6 +247,31 @@ const revisedPatch: EventTemplate[] = [
     deletions: 1,
   },
 ];
+
+/** A dependency upgrade touches the manifest and the lockfile, nothing else. */
+const dependencyPatch: EventTemplate[] = [
+  {
+    type: 'file.changed',
+    path: 'package.json',
+    change: 'modified',
+    additions: 2,
+    deletions: 2,
+  },
+  {
+    type: 'file.changed',
+    path: 'pnpm-lock.yaml',
+    change: 'modified',
+    additions: 8,
+    deletions: 8,
+  },
+];
+
+const patchFor = (ctx: ScenarioContext, attempt: number) =>
+  ctx.category === 'dependencies'
+    ? dependencyPatch
+    : attempt === 1
+      ? firstPatch
+      : revisedPatch;
 
 function testing(script: Script, attempt: number, pass: boolean) {
   const cmd = `cmd-test-${attempt}`;
@@ -685,7 +712,7 @@ export const scenarios: Record<ScenarioName, (ctx: ScenarioContext) => Step[]> =
       start(script, ctx);
       inspection(script);
       planning(script);
-      implementation(script, 1, firstPatch);
+      implementation(script, 1, patchFor(ctx, 1));
       testing(script, 1, true);
       review(script, 'approve', []);
       verification(script, 'pass');
@@ -699,7 +726,7 @@ export const scenarios: Record<ScenarioName, (ctx: ScenarioContext) => Step[]> =
       start(script, { ...ctx, maxRetries: Math.max(1, ctx.maxRetries) });
       inspection(script);
       planning(script);
-      implementation(script, 1, firstPatch);
+      implementation(script, 1, patchFor(ctx, 1));
       testing(script, 1, false);
       script.add(
         {
@@ -710,7 +737,7 @@ export const scenarios: Record<ScenarioName, (ctx: ScenarioContext) => Step[]> =
         },
         900,
       );
-      implementation(script, 2, revisedPatch);
+      implementation(script, 2, patchFor(ctx, 2));
       testing(script, 2, true);
       review(script, 'approve', []);
       verification(script, 'sandbox-error');
@@ -724,7 +751,7 @@ export const scenarios: Record<ScenarioName, (ctx: ScenarioContext) => Step[]> =
       start(script, { ...ctx, maxRetries: 1 });
       inspection(script);
       planning(script);
-      implementation(script, 1, firstPatch);
+      implementation(script, 1, patchFor(ctx, 1));
       testing(script, 1, false);
       script.add(
         {
@@ -735,7 +762,7 @@ export const scenarios: Record<ScenarioName, (ctx: ScenarioContext) => Step[]> =
         },
         900,
       );
-      implementation(script, 2, revisedPatch);
+      implementation(script, 2, patchFor(ctx, 2));
       testing(script, 2, false);
       script.add(
         {

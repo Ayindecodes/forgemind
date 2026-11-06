@@ -311,6 +311,7 @@ export function createStore(options: StoreOptions = {}) {
       baseCommit: entry.run.baseCommit,
       branch: `forgemind/${entry.run.taskId}`,
       maxRetries: entry.run.retries.max || 2,
+      category: data.tasks.get(entry.run.taskId)?.category,
     }).filter(
       (step) => start.cutoffMs === undefined || step.at <= start.cutoffMs,
     );
