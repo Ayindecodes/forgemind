@@ -54,3 +54,16 @@
     outline-offset: 2px;
   }
 }
+
+/* Paper: no chrome, no shadows, room for the margins. */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  html {
+    background: white;
+  }
+  .material-solid {
+    box-shadow: none;
+  }
+}

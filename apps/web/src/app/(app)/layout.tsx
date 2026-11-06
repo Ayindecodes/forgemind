@@ -17,18 +17,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           Skip to content
         </a>
         <div className="min-h-dvh">
-          <Sidebar />
-          <div className="flex min-h-dvh flex-col transition-[padding] duration-base ease-standard lg:pl-(--sidebar-width)">
-            <TopBar />
+          <div className="print:hidden">
+            <Sidebar />
+          </div>
+          <div className="flex min-h-dvh flex-col transition-[padding] duration-base ease-standard lg:pl-(--sidebar-width) print:pl-0">
+            <div className="print:hidden">
+              <TopBar />
+            </div>
             <main
               id="main"
               tabIndex={-1}
-              className="flex-1 px-4 pt-6 pb-24 outline-none md:px-6 md:pb-8"
+              className="flex-1 px-4 pt-6 pb-24 outline-none md:px-6 md:pb-8 print:p-0"
             >
               {children}
             </main>
           </div>
-          <MobileNav />
+          <div className="print:hidden">
+            <MobileNav />
+          </div>
         </div>
       </CommandCenter>
     </AuthGate>
