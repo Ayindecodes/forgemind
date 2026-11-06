@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { Button } from '@/components/ui/button';
 
@@ -43,6 +43,14 @@ export function RunWorkspace({ taskId }: { taskId: string }) {
     () => (live ? deriveRunView(live.events, live.run) : null),
     [live],
   );
+  // The task record (status, decision) lags the live run, and the actions
+  // key off it: when the run moves, read the task again so the decision
+  // controls appear without a reload.
+  const runStatus = live?.run.status;
+  const refetchTask = task.refetch;
+  useEffect(() => {
+    if (runStatus) void refetchTask();
+  }, [runStatus, refetchTask]);
 
   if (task.error || (!task.isPending && !task.data)) return null;
   if (loadError) {
