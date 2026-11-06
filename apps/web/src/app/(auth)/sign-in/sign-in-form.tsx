@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/states';
 import { request } from '@/lib/api-client';
-import { safeNext } from '@/lib/auth';
+import { rememberNext, safeNext } from '@/lib/auth';
 import { useDataSource } from '@/lib/queries';
 
 export function SignInForm() {
@@ -18,7 +18,10 @@ export function SignInForm() {
 
   const start = useMutation({
     mutationFn: () => request('githubStart', { body: { next } }),
-    onSuccess: ({ url }) => window.location.assign(url),
+    onSuccess: ({ url }) => {
+      rememberNext(next);
+      window.location.assign(url);
+    },
   });
 
   if (start.error) {

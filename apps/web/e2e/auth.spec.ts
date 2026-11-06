@@ -30,9 +30,9 @@ test.describe('signing in', () => {
     await page.getByTestId('sign-in-github').click();
     await authorizeAs(page, 'Ayinde');
 
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/tasks$/);
     await expect(
-      page.getByRole('heading', { name: 'Overview', level: 1 }),
+      page.getByRole('heading', { name: 'Engineering Tasks', level: 1 }),
     ).toBeVisible();
     await expect(page.getByTestId('org-trigger')).toHaveText(
       /Ayinde Creations/,

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiRequestError } from './api-client';
-import { safeNext, sessionRefusal, signInHref } from './auth';
+import {
+  safeNext,
+  sessionRefusal,
+  signInHref,
+  rememberNext,
+  takeNext,
+} from './auth';
 
 describe('signInHref', () => {
   it('keeps the destination', () => {
@@ -34,5 +40,25 @@ describe('safeNext', () => {
     expect(safeNext('//evil.example')).toBe('/');
     expect(safeNext('https://evil.example')).toBe('/');
     expect(safeNext(null)).toBe('/');
+  });
+});
+
+describe('the next target across the GitHub round trip', () => {
+  it('is taken once, and only as a path on this app', () => {
+    const items = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => void items.set(key, value),
+      removeItem: (key: string) => void items.delete(key),
+    };
+    rememberNext('/tasks/task-2', storage);
+    expect(takeNext(storage)).toBe('/tasks/task-2');
+    expect(takeNext(storage)).toBe('/');
+    rememberNext('https://evil.example', storage);
+    expect(takeNext(storage)).toBe('/');
+  });
+
+  it('falls back to the overview without a window', () => {
+    expect(takeNext(undefined)).toBe('/');
   });
 });

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/states';
 import { request } from '@/lib/api-client';
+import { takeNext } from '@/lib/auth';
 import { keys } from '@/lib/queries';
 
 export function Callback() {
@@ -21,7 +22,7 @@ export function Callback() {
     mutationFn: () => request('githubCallback', { body: { code, state } }),
     onSuccess: (session) => {
       client.setQueryData(keys.session, session);
-      router.replace(session.organizationId ? '/' : '/onboarding');
+      router.replace(session.organizationId ? takeNext() : '/onboarding');
     },
   });
 
