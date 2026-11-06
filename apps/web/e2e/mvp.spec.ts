@@ -45,16 +45,16 @@ test('a person goes from sign-in to a pull request and back to the history', asy
     await expect(installation).toBeVisible();
     await expect(installation).toContainText(/: (read|write)/);
     await page.getByTestId('connect-repository').click();
-    await page.getByTestId('connect-811007').click();
+    await page.getByTestId('connect-811008').click();
     await page.getByTestId('connect-selected').click();
     await expect(
-      page.getByRole('link', { name: 'forgemind/infra' }),
+      page.getByRole('link', { name: 'forgemind/cli' }),
     ).toBeVisible();
     const repositories = await fetchJson<{
       items: { id: string; fullName: string; status: string }[];
     }>(page, '/repositories?limit=100');
     const infra = repositories.items.find(
-      (repository) => repository.fullName === 'forgemind/infra',
+      (repository) => repository.fullName === 'forgemind/cli',
     );
     expect(infra).toBeTruthy();
     expect(['analyzing', 'connected']).toContain(infra!.status);
@@ -64,7 +64,7 @@ test('a person goes from sign-in to a pull request and back to the history', asy
   await test.step('3. request an engineering task', async () => {
     await open(page, `/tasks/new?repository=${repositoryId}`);
     await expect(page.getByTestId('composer-repository')).toContainText(
-      'forgemind/infra',
+      'forgemind/cli',
     );
     await page
       .getByTestId('composer-title')

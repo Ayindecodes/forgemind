@@ -375,6 +375,17 @@ export function seedStore(store: Store, seed: number) {
         ],
         3000,
       ),
+      // Kept free for the MVP walk; the other two are used by other suites.
+      gh(
+        811008,
+        'forgemind/cli',
+        'Command line client',
+        [
+          { name: 'TypeScript', share: 0.85 },
+          { name: 'Shell', share: 0.15 },
+        ],
+        1400,
+      ),
     ],
   });
   data.githubAccounts.set(sam.id, {
