@@ -19,6 +19,10 @@ pnpm dev
 
 The web app runs on http://localhost:3200 and the dev API on http://localhost:4000. Browser tests start their own servers on ports 3110 and 4110.
 
+## Quality
+
+[docs/quality-review.md](docs/quality-review.md) records the result of every item on the design brief's quality bar, with the test that proves it.
+
 ## Commands
 
 | Command          | What it does                      |
