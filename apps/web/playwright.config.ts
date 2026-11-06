@@ -38,7 +38,7 @@ export default defineConfig({
       // cannot stretch their frames.
       name: 'perf',
       use: { ...devices['Desktop Chrome'] },
-      testMatch: /\/perf\//,
+      testMatch: /\/perf\/.*\.spec\.ts$/,
       dependencies: ['chromium'],
     },
   ],
