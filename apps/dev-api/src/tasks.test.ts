@@ -157,7 +157,12 @@ describe('a task from creation to pull request', () => {
 
   it('refuses to report on a run that has not finished', async () => {
     const { json } = harness(1000);
-    const response = await json('/runs/run-10/report');
+    const tasks = endpoints.tasks.response.parse(
+      (await json('/tasks?status=queued')).body,
+    );
+    const queued = tasks.items[0];
+    expect(queued).toBeDefined();
+    const response = await json(`/runs/${queued?.runId}/report`);
 
     expect(response.status).toBe(409);
   });
