@@ -25,7 +25,7 @@ import {
   RepositoryAnalysis,
 } from './repositories';
 import { Report } from './reports';
-import { Run } from './runs';
+import { Run, RunQuery } from './runs';
 import { CreateTask, Task, TaskQuery } from './tasks';
 import { UsageSummary } from './usage';
 
@@ -178,6 +178,13 @@ export const endpoints = {
     response: PullRequest,
   },
 
+  /** Every run in the organisation, newest first. */
+  runs: {
+    method: 'GET',
+    path: '/runs',
+    query: PageQuery.extend(RunQuery.shape),
+    response: page(Run),
+  },
   run: { method: 'GET', path: '/runs/:id', params: byId, response: Run },
   runEvents: {
     method: 'GET',

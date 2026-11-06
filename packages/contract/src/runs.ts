@@ -143,6 +143,14 @@ export function deriveOutcome(run: RunShape): Outcome | null {
 }
 
 /** Rejects any run whose outcome or verification was not derived from its checks. */
+/** Narrows the run list. Everything is optional; the newest come first. */
+export const RunQuery = z.object({
+  taskId: Id.optional(),
+  repositoryId: Id.optional(),
+  status: RunStatus.optional(),
+  outcome: Outcome.optional(),
+});
+
 export const Run = RunShape.superRefine((run, ctx) => {
   run.stages.forEach((stage, index) => {
     if (stage.id !== stageOrder[index]) {
@@ -187,3 +195,4 @@ export type DiffSummary = z.infer<typeof DiffSummary>;
 export type ReviewSummary = z.infer<typeof ReviewSummary>;
 export type Resources = z.infer<typeof Resources>;
 export type Run = z.infer<typeof Run>;
+export type RunQuery = z.infer<typeof RunQuery>;
