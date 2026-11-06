@@ -4,32 +4,48 @@ import { axeViolations } from './support/axe';
 import { open } from './support/open';
 
 test.describe('notifications and system pages', () => {
-  test('the notification centre lists unread first, opens where each leads, and can clear them', async ({
+  test('the notification centre lists unread first and opens where each leads', async ({
     page,
   }) => {
     await open(page, '/notifications');
     const centre = page.getByTestId('notification-center');
+    const api = 'http://localhost:4110';
     const served = (await (
-      await page.request.get('http://localhost:4110/notifications')
-    ).json()) as { id: string; readAt: string | null; href: string | null }[];
+      await page.request.get(`${api}/notifications`)
+    ).json()) as {
+      id: string;
+      readAt: string | null;
+      href: string | null;
+    }[];
     const unread = served.filter(({ readAt }) => readAt === null);
     await expect(centre).toHaveAttribute('data-unread', String(unread.length));
-    const first = centre.locator('li').first();
-    if (unread.length > 0)
-      await expect(first).toHaveAttribute('data-read', 'false');
-
-    const withHref = served.find(({ href }) => href);
-    if (withHref) {
-      await page
-        .getByTestId(`notification-${withHref.id}`)
-        .getByRole('button')
-        .click();
-      await expect(page).toHaveURL(new RegExp(`${withHref.href}$`));
-      await open(page, '/notifications');
+    if (unread.length > 0) {
+      await expect(centre.locator('li').first()).toHaveAttribute(
+        'data-read',
+        'false',
+      );
+      await expect(page.getByTestId('mark-all-read')).toBeEnabled();
+    } else {
+      await expect(page.getByTestId('mark-all-read')).toBeDisabled();
     }
-    await page.getByTestId('mark-all-read').click();
-    await expect(centre).toHaveAttribute('data-unread', '0');
-    await expect(page.getByTestId('mark-all-read')).toBeDisabled();
+
+    // Opening one marks it read and goes where it points. Other specs share
+    // these notifications, so this takes one at most and clears nothing else.
+    const target =
+      unread.find(({ href }) => href) ?? served.find(({ href }) => href);
+    expect(target).toBeTruthy();
+    await page
+      .getByTestId(`notification-${target!.id}`)
+      .getByRole('button')
+      .click();
+    await expect(page).toHaveURL(new RegExp(`${target!.href}$`));
+    const after = (await (
+      await page.request.get(`${api}/notifications`)
+    ).json()) as {
+      id: string;
+      readAt: string | null;
+    }[];
+    expect(after.find(({ id }) => id === target!.id)?.readAt).not.toBeNull();
   });
 
   test('the menu leads to the centre', async ({ page }) => {
