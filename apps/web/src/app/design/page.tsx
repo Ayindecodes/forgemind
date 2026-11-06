@@ -5,6 +5,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 import { ForgeMark, Logo } from '@/components/brand/logo';
+import { ThemeSwitcher } from '@/components/theme-switcher';
 import { durations, easings } from '@/lib/motion';
 import {
   auditContrast,
@@ -18,7 +19,6 @@ import {
 import { DesignNav } from './design-nav';
 import { requireDesignPages } from './enabled';
 import { MotionDemos } from './motion-demos';
-import { ThemeSwitcher } from './theme-switcher';
 
 export const metadata: Metadata = { title: 'Design system | ForgeMind' };
 

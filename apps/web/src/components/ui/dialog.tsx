@@ -12,7 +12,8 @@ export const Dialog = RadixDialog.Root;
 export const DialogTrigger = RadixDialog.Trigger;
 export const DialogClose = RadixDialog.Close;
 
-const overlay =
+/** The dimmed layer behind anything modal. */
+export const dialogOverlay =
   'material-scrim fixed inset-0 z-40 data-[state=open]:motion-fade-in data-[state=closed]:motion-fade-out';
 
 const panel =
@@ -35,7 +36,7 @@ export function DialogContent({
 }: DialogContentProps) {
   return (
     <RadixDialog.Portal>
-      <RadixDialog.Overlay className={overlay} />
+      <RadixDialog.Overlay className={dialogOverlay} />
       <RadixDialog.Content
         aria-modal="true"
         className={cx(panel, className)}
@@ -115,7 +116,7 @@ export function ConfirmDialog({
     <AlertDialog.Root open={isOpen} onOpenChange={setOpen}>
       {trigger && <AlertDialog.Trigger asChild>{trigger}</AlertDialog.Trigger>}
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className={overlay} />
+        <AlertDialog.Overlay className={dialogOverlay} />
         <AlertDialog.Content aria-modal="true" className={panel}>
           <AlertDialog.Title className="text-md font-semibold">
             {title}
