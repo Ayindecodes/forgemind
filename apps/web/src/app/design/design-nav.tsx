@@ -9,6 +9,7 @@ const pages = [
   { href: '/design', label: 'Foundations' },
   { href: '/design/components', label: 'Components' },
   { href: '/design/logs', label: 'Logs' },
+  { href: '/design/perf', label: 'Performance' },
 ];
 
 export function DesignNav() {
