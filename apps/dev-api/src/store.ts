@@ -985,6 +985,15 @@ export function createStore(options: StoreOptions = {}) {
           .map((event) => (event.type === 'agent.note' ? event.text : ''));
       const architect = notes('architect');
       const unresolved = [
+        // A stage that ended failed, with no later attempt that passed.
+        ...run.stages
+          .filter((stage) => stage.status === 'failed')
+          .flatMap((stage) => {
+            const last = stage.attempts.at(-1);
+            return last?.failureReason
+              ? [`${stage.id} failed: ${last.failureReason}`]
+              : [];
+          }),
         ...(run.review?.concerns ?? []),
         ...run.checks
           .filter((check) => check.required && check.status !== 'passed')
