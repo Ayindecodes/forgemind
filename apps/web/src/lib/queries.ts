@@ -37,6 +37,8 @@ export const keys = {
   tasks: ['tasks'] as const,
   notifications: ['notifications'] as const,
   pullRequests: ['pull-requests'] as const,
+  usage: ['usage'] as const,
+  audit: ['audit'] as const,
   task: (id: string) => ['task', id] as const,
   run: (id: string) => ['run', id] as const,
 };
@@ -71,12 +73,33 @@ export const useRepositories = (
       : false,
   });
 
-export const useTasks = (enabled = true) =>
+export const useTasks = (enabled = true, { live = false } = {}) =>
   useQuery({
     queryKey: keys.tasks,
     queryFn: ({ signal }) =>
       request('tasks', { query: { limit: 200 }, signal }),
     enabled,
+    // While something runs, the list keeps up with it.
+    refetchInterval: live
+      ? (query) =>
+          query.state.data?.items.some(
+            ({ status }) => status === 'running' || status === 'queued',
+          )
+            ? 5000
+            : false
+      : false,
+  });
+
+export const useUsage = () =>
+  useQuery({
+    queryKey: keys.usage,
+    queryFn: ({ signal }) => request('usage', { signal }),
+  });
+
+export const useAudit = (limit = 20) =>
+  useQuery({
+    queryKey: [...keys.audit, limit],
+    queryFn: ({ signal }) => request('audit', { query: { limit }, signal }),
   });
 
 export const useTask = (id: string) =>
