@@ -30,10 +30,11 @@ describe('request', () => {
       nextCursor: null,
     });
 
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [
-      URL,
+    const [target, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
       RequestInit,
     ];
+    const url = new URL(target);
     expect(url.pathname).toBe('/tasks');
     expect(url.searchParams.get('limit')).toBe('5');
     expect(url.searchParams.get('status')).toBe('running');
@@ -46,10 +47,11 @@ describe('request', () => {
 
     await request('markNotificationsRead', { body: { ids: ['note-1'] } });
 
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [
-      URL,
+    const [target, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
       RequestInit,
     ];
+    const url = new URL(target);
     expect(url.pathname).toBe('/notifications/read');
     expect(init.method).toBe('POST');
     expect(init.body).toBe(JSON.stringify({ ids: ['note-1'] }));

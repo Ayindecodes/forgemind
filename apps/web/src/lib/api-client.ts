@@ -99,13 +99,21 @@ function noteDataSource(response: Response) {
   sourceListeners.forEach((listener) => listener());
 }
 
-function withQuery(path: string, query: Record<string, unknown> | undefined) {
-  const url = new URL(path, API_URL);
-  for (const [key, value] of Object.entries(query ?? {})) {
+/** The absolute URL of an endpoint, for callers that don't go through fetch. */
+export function urlFor<K extends EndpointKey>(
+  key: K,
+  options: Pick<RequestOptions<K>, 'params' | 'query'>,
+): string {
+  const { params, query } = options as {
+    params?: Record<string, string>;
+    query?: Record<string, unknown>;
+  };
+  const url = new URL(buildPath(endpoints[key].path, params), API_URL);
+  for (const [name, value] of Object.entries(query ?? {})) {
     if (value !== undefined && value !== null)
-      url.searchParams.set(key, String(value));
+      url.searchParams.set(name, String(value));
   }
-  return url;
+  return url.toString();
 }
 
 export async function request<K extends EndpointKey>(
@@ -113,13 +121,8 @@ export async function request<K extends EndpointKey>(
   options: RequestOptions<K>,
 ): Promise<ResponseOf<K>> {
   const endpoint = endpoints[key];
-  const { params, query, body, signal } = options as {
-    params?: Record<string, string>;
-    query?: Record<string, unknown>;
-    body?: unknown;
-    signal?: AbortSignal;
-  };
-  const url = withQuery(buildPath(endpoint.path, params), query);
+  const { body, signal } = options as { body?: unknown; signal?: AbortSignal };
+  const url = urlFor(key, options);
 
   let response: Response;
   try {
