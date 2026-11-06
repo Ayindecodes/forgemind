@@ -25,6 +25,8 @@ export const timeouts = {
   copied: 1500,
   /** How long the first key of a two-key shortcut waits for the second. */
   keySequence: 1000,
+  /** How long live events collect before one render shows them all. */
+  liveBatch: 32,
 } as const;
 
 type Bezier = [number, number, number, number];
