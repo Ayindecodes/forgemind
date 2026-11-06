@@ -11,6 +11,8 @@ import {
   GitHubStart,
   HealthResponse,
   InstallCallback,
+  UpdateMemberRole,
+  InviteMember,
   PageQuery,
   RunQuery,
   TaskQuery,
@@ -203,6 +205,17 @@ export function createApp(store: Store) {
     return c.json(store.createOrganization(session(c), name), 201);
   });
   app.get(e.members.path, (c) => c.json(store.members(org(c).orgId)));
+  app.post(e.inviteMember.path, async (c) =>
+    c.json(store.inviteMember(session(c), await body(c, InviteMember)), 201),
+  );
+  app.patch(e.updateMemberRole.path, async (c) => {
+    const { role } = await body(c, UpdateMemberRole);
+    return c.json(store.updateMemberRole(session(c), id(c), role));
+  });
+  app.delete(e.removeMember.path, (c) => {
+    store.removeMember(session(c), id(c));
+    return c.json({ ok: true as const });
+  });
   app.get(e.installation.path, (c) =>
     c.json({ installation: store.installation(org(c).orgId) }),
   );

@@ -30,6 +30,7 @@ import {
   type UsageSummary,
   type User,
   type RunQuery,
+  type InviteMember,
 } from '@forgemind/contract';
 
 import { ApiFailure } from './errors';
@@ -483,6 +484,113 @@ export function createStore(options: StoreOptions = {}) {
       return must(data.organizations.get(orgId), 'Organization', orgId);
     },
     members: (orgId: string) => data.memberships.get(orgId) ?? [],
+    inviteMember(session: Session, input: InviteMember): Member {
+      const organizationId = requireOrg(session);
+      requireRole(session, ['owner', 'admin']);
+      if (input.role === 'owner' && session.role !== 'owner') {
+        throw new ApiFailure('forbidden', 'Only an owner can add an owner');
+      }
+      const members = data.memberships.get(organizationId) ?? [];
+      const existing = [...data.users.values()].find(
+        (user) => user.email.toLowerCase() === input.email.toLowerCase(),
+      );
+      if (
+        existing &&
+        members.some((member) => member.user.id === existing.id)
+      ) {
+        throw new ApiFailure('conflict', `${input.email} is already a member`);
+      }
+      const user: User = existing ?? {
+        id: nextId('user'),
+        email: input.email,
+        name: input.name,
+        avatarUrl: null,
+        githubLogin: null,
+        createdAt: now().toISOString(),
+      };
+      data.users.set(user.id, user);
+      const member: Member = {
+        user,
+        role: input.role,
+        joinedAt: now().toISOString(),
+      };
+      data.memberships.set(organizationId, [...members, member]);
+      audit(organizationId, session.user, 'member.invited', {
+        type: 'user',
+        id: user.id,
+        label: user.name,
+      });
+      return member;
+    },
+    updateMemberRole(session: Session, userId: string, role: Role): Member {
+      const organizationId = requireOrg(session);
+      requireRole(session, ['owner', 'admin']);
+      const members = data.memberships.get(organizationId) ?? [];
+      const current = members.find((member) => member.user.id === userId);
+      if (!current) throw new ApiFailure('not_found', 'No such member');
+      if (
+        (current.role === 'owner' || role === 'owner') &&
+        session.role !== 'owner'
+      ) {
+        throw new ApiFailure(
+          'forbidden',
+          'Only an owner can change who owns the organization',
+        );
+      }
+      if (
+        current.role === 'owner' &&
+        role !== 'owner' &&
+        members.filter((member) => member.role === 'owner').length === 1
+      ) {
+        throw new ApiFailure(
+          'conflict',
+          'The organization needs at least one owner',
+        );
+      }
+      const updated: Member = { ...current, role };
+      data.memberships.set(
+        organizationId,
+        members.map((member) => (member.user.id === userId ? updated : member)),
+      );
+      audit(organizationId, session.user, 'member.role_changed', {
+        type: 'user',
+        id: userId,
+        label: `${current.user.name}: ${role}`,
+      });
+      return updated;
+    },
+    removeMember(session: Session, userId: string) {
+      const organizationId = requireOrg(session);
+      requireRole(session, ['owner', 'admin']);
+      const members = data.memberships.get(organizationId) ?? [];
+      const current = members.find((member) => member.user.id === userId);
+      if (!current) throw new ApiFailure('not_found', 'No such member');
+      if (current.role === 'owner' && session.role !== 'owner') {
+        throw new ApiFailure('forbidden', 'Only an owner can remove an owner');
+      }
+      if (
+        current.role === 'owner' &&
+        members.filter((member) => member.role === 'owner').length === 1
+      ) {
+        throw new ApiFailure(
+          'conflict',
+          'The organization needs at least one owner',
+        );
+      }
+      data.memberships.set(
+        organizationId,
+        members.filter((member) => member.user.id !== userId),
+      );
+      // Their sessions stop working at once.
+      for (const [token, held] of data.sessions) {
+        if (held.userId === userId) data.sessions.delete(token);
+      }
+      audit(organizationId, session.user, 'member.removed', {
+        type: 'user',
+        id: userId,
+        label: current.user.name,
+      });
+    },
     createOrganization(session: Session, name: string): Organization {
       if (session.organizationId) {
         throw new ApiFailure(
