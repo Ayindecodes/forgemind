@@ -1,0 +1,160 @@
+import {
+  ApiError,
+  buildPath,
+  DATA_SOURCE_HEADER,
+  endpoints,
+  type DataSource,
+  type EndpointKey,
+  type ErrorCode,
+} from '@forgemind/contract';
+import type { z } from 'zod';
+
+/*
+ * The typed client for the contract. Every call names an endpoint, gets typed
+ * params, query and body, and returns the parsed response or throws an error
+ * the UI can show. It also notes whether the API serves demo or live data.
+ */
+
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+type Endpoints = typeof endpoints;
+type Infer<T> = T extends z.ZodType ? z.infer<T> : never;
+type Input<T> = T extends z.ZodType ? z.input<T> : never;
+
+type ParamsOf<K extends EndpointKey> = Endpoints[K] extends { params: infer P }
+  ? Infer<P>
+  : never;
+type QueryOf<K extends EndpointKey> = Endpoints[K] extends { query: infer Q }
+  ? Partial<Input<Q>>
+  : never;
+type BodyOf<K extends EndpointKey> = Endpoints[K] extends { body: infer B }
+  ? Infer<B>
+  : never;
+
+export type ResponseOf<K extends EndpointKey> = Infer<Endpoints[K]['response']>;
+
+type Maybe<T, Key extends string> = [T] extends [never]
+  ? { [P in Key]?: undefined }
+  : { [P in Key]: T };
+
+export type RequestOptions<K extends EndpointKey> = {
+  signal?: AbortSignal;
+} & Maybe<ParamsOf<K>, 'params'> &
+  ([QueryOf<K>] extends [never]
+    ? { query?: undefined }
+    : { query?: QueryOf<K> }) &
+  Maybe<BodyOf<K>, 'body'>;
+
+/** The API answered with an error it described. */
+export class ApiRequestError extends Error {
+  constructor(
+    readonly code: ErrorCode,
+    message: string,
+    readonly status: number,
+    readonly details?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
+}
+
+/** The API could not be reached at all. */
+export class ApiUnreachableError extends Error {
+  constructor(readonly url: string) {
+    super(`Could not reach the API at ${url}`);
+    this.name = 'ApiUnreachableError';
+  }
+}
+
+/** The API answered, but not with what the contract promises. */
+export class ApiContractError extends Error {
+  constructor(
+    readonly endpoint: EndpointKey,
+    readonly issues: z.core.$ZodIssue[],
+  ) {
+    super(`The response from ${endpoint} does not match the contract`);
+    this.name = 'ApiContractError';
+  }
+}
+
+let dataSource: DataSource | 'unknown' = 'unknown';
+const sourceListeners = new Set<() => void>();
+
+export const getDataSource = () => dataSource;
+
+export function subscribeDataSource(listener: () => void) {
+  sourceListeners.add(listener);
+  return () => {
+    sourceListeners.delete(listener);
+  };
+}
+
+function noteDataSource(response: Response) {
+  const header = response.headers.get(DATA_SOURCE_HEADER);
+  const next = header === 'demo' || header === 'live' ? header : 'unknown';
+  if (next === dataSource) return;
+
+  dataSource = next;
+  sourceListeners.forEach((listener) => listener());
+}
+
+function withQuery(path: string, query: Record<string, unknown> | undefined) {
+  const url = new URL(path, API_URL);
+  for (const [key, value] of Object.entries(query ?? {})) {
+    if (value !== undefined && value !== null)
+      url.searchParams.set(key, String(value));
+  }
+  return url;
+}
+
+export async function request<K extends EndpointKey>(
+  key: K,
+  options: RequestOptions<K>,
+): Promise<ResponseOf<K>> {
+  const endpoint = endpoints[key];
+  const { params, query, body, signal } = options as {
+    params?: Record<string, string>;
+    query?: Record<string, unknown>;
+    body?: unknown;
+    signal?: AbortSignal;
+  };
+  const url = withQuery(buildPath(endpoint.path, params), query);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: endpoint.method,
+      headers: body === undefined ? {} : { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: 'include',
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError')
+      throw error;
+    throw new ApiUnreachableError(API_URL);
+  }
+
+  noteDataSource(response);
+
+  if (!response.ok) {
+    const failure = ApiError.safeParse(
+      await response.json().catch(() => undefined),
+    );
+    if (failure.success) {
+      const { code, message, details } = failure.data.error;
+      throw new ApiRequestError(code, message, response.status, details);
+    }
+    throw new ApiRequestError(
+      'internal',
+      `The API answered ${response.status}`,
+      response.status,
+    );
+  }
+
+  const parsed = endpoint.response.safeParse(await response.json());
+  if (!parsed.success) throw new ApiContractError(key, parsed.error.issues);
+
+  return parsed.data as ResponseOf<K>;
+}
