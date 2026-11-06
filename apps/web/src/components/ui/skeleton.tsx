@@ -10,6 +10,7 @@ export function Skeleton({
   return (
     <div
       aria-hidden="true"
+      data-skeleton=""
       className={cx('animate-pulse rounded-md bg-hover', className)}
       {...props}
     />
