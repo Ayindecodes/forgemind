@@ -90,6 +90,38 @@ export const useTasks = (enabled = true, { live = false } = {}) =>
       : false,
   });
 
+/** Every run in the organisation, newest first. */
+export const useRuns = (
+  filter: { repositoryId?: string; status?: string; outcome?: string } = {},
+) =>
+  useQuery({
+    queryKey: ['runs', filter],
+    queryFn: ({ signal }) =>
+      request('runs', {
+        query: {
+          limit: 200,
+          ...(filter.repositoryId ? { repositoryId: filter.repositoryId } : {}),
+          ...(filter.status
+            ? {
+                status: filter.status as
+                  | 'queued'
+                  | 'running'
+                  | 'awaiting_approval'
+                  | 'completed'
+                  | 'cancelled',
+              }
+            : {}),
+          ...(filter.outcome
+            ? {
+                outcome: filter.outcome as
+                  'succeeded' | 'partial' | 'failed' | 'unverified',
+              }
+            : {}),
+        },
+        signal,
+      }),
+  });
+
 export const useUsage = () =>
   useQuery({
     queryKey: keys.usage,
