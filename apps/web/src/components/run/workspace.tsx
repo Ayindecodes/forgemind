@@ -14,6 +14,7 @@ import { usePullRequests, useTask } from '@/lib/queries';
 
 import { DetailsTabs } from './details-tabs';
 import { OutcomePanel } from './outcome-panel';
+import { RunAnnouncer } from './run-announcer';
 import { PlanPanel } from './plan-panel';
 import { RunSummary } from './run-summary';
 import { TaskActions } from './task-actions';
@@ -77,6 +78,7 @@ export function RunWorkspace({ taskId }: { taskId: string }) {
       data-event-count={events.length}
       className="flex flex-col gap-4"
     >
+      <RunAnnouncer run={run} />
       {olderRun && (
         <p
           role="status"
