@@ -298,6 +298,13 @@ function ReviewBody({
         <Button asChild size="sm" variant="ghost" icon={<ArrowLeft />}>
           <Link href={`/tasks/${task.id}`}>Run</Link>
         </Button>
+        {run.outcome && (
+          <Button asChild size="sm" variant="ghost">
+            <Link href={`/tasks/${task.id}/report`} data-testid="open-report">
+              Report
+            </Link>
+          </Button>
+        )}
         <span className="text-sm text-fg-secondary tabular-nums">
           {files.length} {files.length === 1 ? 'file' : 'files'},{' '}
           <span className="text-success-fg">+{totals.additions}</span>{' '}

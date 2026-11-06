@@ -30,6 +30,16 @@ export function OutcomePanel({ run, view }: { run: Run; view: RunView }) {
           Outcome
         </h2>
         <Status status={runStatus(run)} size="sm" />
+        {run.outcome && (
+          <Button asChild size="sm" variant="ghost" className="ml-auto">
+            <Link
+              href={`/tasks/${run.taskId}/report`}
+              data-testid="open-report"
+            >
+              Report
+            </Link>
+          </Button>
+        )}
         {verificationStatus[run.verification] !== runStatus(run) && (
           <Status
             status={verificationStatus[run.verification]}
