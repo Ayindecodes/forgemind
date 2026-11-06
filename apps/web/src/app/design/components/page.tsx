@@ -4,6 +4,7 @@ import { DesignNav } from '../design-nav';
 import { requireDesignPages } from '../enabled';
 import { ThemeSwitcher } from '../theme-switcher';
 
+import { ProductShowcase } from './product-showcase';
 import { Showcase } from './showcase';
 
 export const metadata: Metadata = { title: 'Components | ForgeMind' };
@@ -27,6 +28,7 @@ export default function ComponentsPage() {
         </div>
       </header>
       <Showcase />
+      <ProductShowcase />
     </main>
   );
 }
