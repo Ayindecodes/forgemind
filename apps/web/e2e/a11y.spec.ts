@@ -82,7 +82,7 @@ test.describe('screen reader structure', () => {
 });
 
 test.describe('the core path by keyboard, with live announcements', () => {
-  test('from the overview to a running task, then a decision, without a pointer', async ({
+  test('from the overview to a running task, then stopping it, without a pointer', async ({
     page,
   }) => {
     await open(page, '/');
@@ -114,23 +114,22 @@ test.describe('the core path by keyboard, with live announcements', () => {
       timeout: 20_000,
     });
 
-    // A decision on a finished run: focus the control, confirm in the dialog, hear the result.
-    await open(page, '/tasks/task-3');
-    await expect(page.getByTestId('run-workspace')).toHaveAttribute(
-      'data-connection',
-      'live',
-    );
-    await page.getByTestId('reject').focus();
+    // A decision on this run, not on a seeded task another test relies on:
+    // focus the control, confirm in the dialog, hear the result.
+    await page.getByTestId('cancel-run').focus();
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('alertdialog');
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await expect(
+      dialog.getByRole('button', { name: 'Keep running' }),
+    ).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(dialog.getByRole('button', { name: 'Reject' })).toBeFocused();
+    await expect(
+      dialog.getByRole('button', { name: 'Cancel run' }),
+    ).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('run-announcer')).toContainText(
-      'Run completed',
-      { timeout: 15_000 },
-    );
+    await expect(announcer).toContainText('Run cancelled', {
+      timeout: 15_000,
+    });
   });
 });
