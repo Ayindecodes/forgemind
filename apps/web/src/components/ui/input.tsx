@@ -20,7 +20,7 @@ export function Input({ icon, className, ...props }: InputProps) {
     <input
       className={cx(
         controlBase,
-        'h-8 px-2.5',
+        'h-8 px-2.5 pointer-coarse:h-10',
         icon ? 'pl-8' : undefined,
         className,
       )}

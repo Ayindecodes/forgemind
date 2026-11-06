@@ -68,7 +68,7 @@ export function TabsTrigger({
     <RadixTabs.Trigger
       value={value}
       className={cx(
-        'relative h-8 rounded-t-sm px-2.5 text-sm font-medium text-fg-secondary transition-colors hover:text-fg disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-fg',
+        'relative h-8 rounded-t-sm px-2.5 text-sm font-medium pointer-coarse:h-10 text-fg-secondary transition-colors hover:text-fg disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-fg',
         className,
       )}
       {...props}

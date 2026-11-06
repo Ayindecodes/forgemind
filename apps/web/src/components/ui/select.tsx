@@ -33,7 +33,7 @@ export function Select({
       <RadixSelect.Trigger
         className={cx(
           controlBase,
-          'press inline-flex h-8 items-center justify-between gap-2 px-2.5 data-[placeholder]:text-fg-muted',
+          'press inline-flex h-8 items-center justify-between gap-2 px-2.5 pointer-coarse:h-10 data-[placeholder]:text-fg-muted',
           className,
         )}
         data-testid={testId}

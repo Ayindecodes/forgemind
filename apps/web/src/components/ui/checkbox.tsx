@@ -35,7 +35,7 @@ export function Checkbox({
     <div className={cx('flex items-start gap-2', className)}>
       <RadixCheckbox.Root
         id={id}
-        className="press mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-sm border border-line-control bg-elevated text-on-accent transition-colors hover:border-fg-muted disabled:pointer-events-none disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
+        className="press mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-sm border pointer-coarse:size-6 border-line-control bg-elevated text-on-accent transition-colors hover:border-fg-muted disabled:pointer-events-none disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
         {...props}
       >
         <RadixCheckbox.Indicator>
@@ -61,10 +61,10 @@ export function Switch({
     <div className={cx('flex items-start gap-2', className)}>
       <RadixSwitch.Root
         id={id}
-        className="press relative h-5 w-9 shrink-0 rounded-full border border-line-control bg-surface transition-colors hover:border-fg-muted disabled:pointer-events-none disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
+        className="press relative h-5 w-9 shrink-0 rounded-full border border-line-control bg-surface pointer-coarse:h-9 pointer-coarse:w-15 transition-colors hover:border-fg-muted disabled:pointer-events-none disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent"
         {...props}
       >
-        <RadixSwitch.Thumb className="block size-3.5 translate-x-0.5 rounded-full bg-fg-secondary transition-transform data-[state=checked]:translate-x-4.5 data-[state=checked]:bg-on-accent" />
+        <RadixSwitch.Thumb className="block size-3.5 translate-x-0.5 rounded-full bg-fg-secondary transition-transform pointer-coarse:size-7 data-[state=checked]:translate-x-4.5 data-[state=checked]:bg-on-accent pointer-coarse:data-[state=checked]:translate-x-7" />
       </RadixSwitch.Root>
       <Caption id={id} label={label} description={description} />
     </div>

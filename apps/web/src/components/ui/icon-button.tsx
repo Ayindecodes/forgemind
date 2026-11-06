@@ -26,7 +26,12 @@ export function IconButton({
       aria-label={label}
       size={size}
       icon={icon}
-      className={cx(size === 'sm' ? 'w-7 px-0' : 'w-8 px-0', className)}
+      className={cx(
+        size === 'sm'
+          ? 'w-7 px-0 pointer-coarse:w-9'
+          : 'w-8 px-0 pointer-coarse:w-10',
+        className,
+      )}
       {...props}
     />
   );

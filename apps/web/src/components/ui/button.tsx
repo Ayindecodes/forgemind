@@ -18,8 +18,8 @@ export const buttonVariants: Record<ButtonVariant, string> = {
 };
 
 export const buttonSizes: Record<ButtonSize, string> = {
-  sm: 'h-7 px-2.5 text-sm',
-  md: 'h-8 px-3 text-base',
+  sm: 'h-7 px-2.5 text-sm pointer-coarse:h-9',
+  md: 'h-8 px-3 text-base pointer-coarse:h-10',
 };
 
 export const buttonBase =
