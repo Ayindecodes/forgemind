@@ -17,7 +17,12 @@ import { Event, EventQuery } from './events';
 import { Finding, FindingQuery } from './findings';
 import { HealthResponse } from './health';
 import { AuditEvent, Notification } from './notifications';
-import { Member, Organization } from './organizations';
+import {
+  Member,
+  Organization,
+  InviteMember,
+  UpdateMemberRole,
+} from './organizations';
 import { PullRequest } from './pull-requests';
 import {
   ConnectRepository,
@@ -35,7 +40,7 @@ import { UsageSummary } from './usage';
  */
 
 export type Endpoint = {
-  method: 'GET' | 'POST' | 'DELETE';
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   path: string;
   params?: z.ZodObject;
   query?: z.ZodObject;
@@ -100,6 +105,25 @@ export const endpoints = {
     method: 'GET',
     path: '/organization/members',
     response: z.array(Member),
+  },
+  inviteMember: {
+    method: 'POST',
+    path: '/organization/members',
+    body: InviteMember,
+    response: Member,
+  },
+  updateMemberRole: {
+    method: 'PATCH',
+    path: '/organization/members/:id',
+    params: byId,
+    body: UpdateMemberRole,
+    response: Member,
+  },
+  removeMember: {
+    method: 'DELETE',
+    path: '/organization/members/:id',
+    params: byId,
+    response: ok,
   },
 
   repositories: {
