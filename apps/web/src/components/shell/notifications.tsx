@@ -2,6 +2,7 @@
 
 import type { Notification } from '@forgemind/contract';
 import { Bell } from 'lucide-react';
+import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -52,7 +53,13 @@ export function Notifications() {
         data-testid="notifications"
       >
         <div className="flex h-10 items-center justify-between border-b border-line pr-1.5 pl-3">
-          <span className="text-sm font-medium">Notifications</span>
+          <Link
+            href="/notifications"
+            className="text-sm font-medium hover:underline"
+            data-testid="see-all-notifications"
+          >
+            Notifications
+          </Link>
           <Button
             size="sm"
             variant="ghost"
