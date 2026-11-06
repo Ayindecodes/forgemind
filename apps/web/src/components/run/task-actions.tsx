@@ -237,15 +237,17 @@ export function TaskActions({
     }
     if (!canRun) return null;
     return (
-      <Button
-        variant="primary"
-        size="sm"
-        loading={openPullRequest.isPending}
-        onClick={() => openPullRequest.mutate()}
-        data-testid="open-pull-request"
-      >
-        Open pull request
-      </Button>
+      <ConfirmDialog
+        trigger={
+          <Button variant="primary" size="sm" data-testid="open-pull-request">
+            Open pull request
+          </Button>
+        }
+        title="Open a pull request on GitHub?"
+        description="ForgeMind pushes the working branch and opens a pull request for people to review. It never merges; merging stays on GitHub, with you."
+        confirmLabel="Open pull request"
+        onConfirm={() => openPullRequest.mutateAsync().then(() => undefined)}
+      />
     );
   }
 

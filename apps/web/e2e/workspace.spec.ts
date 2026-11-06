@@ -137,7 +137,11 @@ test.describe('the execution workspace', () => {
     );
     await expect(page.getByTestId('open-pull-request')).toBeVisible();
     await page.getByTestId('open-pull-request').click();
+    const confirm = page.getByRole('alertdialog');
+    await expect(confirm).toContainText('never merges');
+    await confirm.getByRole('button', { name: 'Open pull request' }).click();
     await expect(page.getByTestId('view-pull-request')).toBeVisible();
+    expect(await page.getByRole('button', { name: /merge/i }).count()).toBe(0);
 
     const pulls = await fetchJson<{ items: { taskId: string }[] }>(
       page,
