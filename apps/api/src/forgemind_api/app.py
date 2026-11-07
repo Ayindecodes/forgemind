@@ -19,6 +19,9 @@ from forgemind_api.telemetry import configure_telemetry
 log = logging.getLogger("forgemind_api")
 
 REQUEST_ID_HEADER = "x-request-id"
+# The contract's data-source header: this service serves real data.
+DATA_SOURCE_HEADER = "x-forgemind-data"
+DATA_SOURCE = "live"
 
 
 class Health(BaseModel):
@@ -46,7 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["content-type", REQUEST_ID_HEADER],
-        expose_headers=[REQUEST_ID_HEADER],
+        expose_headers=[REQUEST_ID_HEADER, DATA_SOURCE_HEADER],
     )
 
     @app.middleware("http")
@@ -59,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             response = await call_next(request)
             response.headers[REQUEST_ID_HEADER] = request_id
+            response.headers[DATA_SOURCE_HEADER] = DATA_SOURCE
             log.info(
                 "request",
                 extra={

@@ -3,7 +3,7 @@ import logging
 
 from fastapi.testclient import TestClient
 
-from forgemind_api.app import REQUEST_ID_HEADER, create_app
+from forgemind_api.app import DATA_SOURCE_HEADER, REQUEST_ID_HEADER, create_app
 from forgemind_api.logging import JsonFormatter
 from forgemind_api.settings import Settings
 
@@ -73,3 +73,7 @@ def test_the_request_log_line_carries_the_request_id() -> None:
     assert request_lines[-1]["request_id"] == "trace-7"
     assert request_lines[-1]["path"] == "/health"
     assert request_lines[-1]["status"] == 200
+
+
+def test_every_response_says_its_data_is_live() -> None:
+    assert client().get("/health").headers[DATA_SOURCE_HEADER] == "live"
