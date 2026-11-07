@@ -10,8 +10,13 @@ uv sync                 # dependencies and a .venv, Python 3.13 fetched if missi
 uv run pytest           # unit tests
 uv run ruff check .     # lint
 uv run pyright          # types
-uv run python -m forgemind_api   # serve on FORGEMIND_PORT, 4200 by default
+uv run python -m forgemind_api serve     # serve on FORGEMIND_PORT, 4200 by default
+uv run python -m forgemind_api migrate   # bring FORGEMIND_DATABASE_URL to the current schema
 ```
+
+The schema lives in `src/forgemind_api/models` and its migrations in
+`src/forgemind_api/migrations`, generated with Alembic and reviewed. The
+database tests start a throwaway PostgreSQL in Docker through testcontainers.
 
 From the repository root, `docker compose up` builds the service and starts
 it with PostgreSQL and Redis on localhost-only ports.

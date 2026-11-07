@@ -10,7 +10,14 @@ import os
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 Environment = Literal["development", "test", "staging", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
@@ -30,6 +37,9 @@ class Settings(BaseModel):
     version: str = "0.1.0"
     commit: str = "unknown"
     otel_endpoint: str | None = None
+    # postgresql+psycopg://user:password@host:port/database; required outside
+    # development, where the service can start without a database.
+    database_url: str | None = None
 
     @field_validator("web_origin", "otel_endpoint")
     @classmethod
@@ -39,6 +49,21 @@ class Settings(BaseModel):
         if not value.startswith(("http://", "https://")) or value.endswith("/"):
             raise ValueError("must be an http(s) origin without a trailing slash")
         return value
+
+    @field_validator("database_url")
+    @classmethod
+    def _postgres_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith("postgresql+psycopg://"):
+            raise ValueError("must start with postgresql+psycopg://")
+        return value
+
+    @model_validator(mode="after")
+    def _database_outside_development(self) -> Settings:
+        if self.environment != "development" and self.database_url is None:
+            raise ValueError(
+                f"{ENV_PREFIX}DATABASE_URL is required in {self.environment}"
+            )
+        return self
 
 
 class SettingsError(RuntimeError):

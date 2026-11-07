@@ -5,11 +5,13 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
+from typing import Literal
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from forgemind_api.db import database_reachable, make_engine
 from forgemind_api.logging import configure_logging, request_id_var
 from forgemind_api.settings import Settings, load_settings
 from forgemind_api.telemetry import configure_telemetry
@@ -20,13 +22,15 @@ REQUEST_ID_HEADER = "x-request-id"
 
 
 class Health(BaseModel):
-    """What the service says about itself."""
+    """What the service says about itself and what it depends on."""
 
-    status: str
+    status: Literal["ok", "degraded"]
     service: str
     version: str
     commit: str
     environment: str
+    # Each configured dependency, "ok" or "unreachable". Absent ones are not listed.
+    checks: dict[str, Literal["ok", "unreachable"]]
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -67,14 +71,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             request_id_var.reset(token)
         return response
 
-    @app.get("/health", response_model=Health)
-    def health() -> Health:
+    engine = make_engine(settings.database_url) if settings.database_url else None
+    app.state.engine = engine
+
+    @app.get("/health", response_model=Health, responses={503: {"model": Health}})
+    def health(response: Response) -> Health:
+        checks: dict[str, Literal["ok", "unreachable"]] = {}
+        if engine is not None:
+            checks["database"] = "ok" if database_reachable(engine) else "unreachable"
+        degraded = "unreachable" in checks.values()
+        if degraded:
+            response.status_code = 503
         return Health(
-            status="ok",
+            status="degraded" if degraded else "ok",
             service="forgemind-api",
             version=settings.version,
             commit=settings.commit,
             environment=settings.environment,
+            checks=checks,
         )
 
     configure_telemetry(app, settings)

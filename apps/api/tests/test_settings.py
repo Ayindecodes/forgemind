@@ -15,6 +15,7 @@ def test_reads_prefixed_variables_only() -> None:
     settings = load_settings(
         {
             "FORGEMIND_ENVIRONMENT": "staging",
+            "FORGEMIND_DATABASE_URL": "postgresql+psycopg://a:b@db/c",
             "FORGEMIND_PORT": "8080",
             "FORGEMIND_COMMIT": "abc1234",
             "PORT": "1",

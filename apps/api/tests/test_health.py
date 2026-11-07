@@ -21,6 +21,7 @@ def test_health_says_who_it_is() -> None:
         "version": "1.2.3",
         "commit": "abc1234",
         "environment": "development",
+        "checks": {},
     }
 
 
