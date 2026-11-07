@@ -30,6 +30,19 @@ services:
       timeout: 3s
       retries: 10
 
+  migrate:
+    build:
+      context: apps/api
+      args:
+        COMMIT: ${COMMIT:-unknown}
+    command: ['python', '-m', 'forgemind_api', 'migrate']
+    environment:
+      FORGEMIND_ENVIRONMENT: development
+      FORGEMIND_DATABASE_URL: postgresql+psycopg://forgemind:forgemind@postgres:5432/forgemind
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: apps/api
@@ -39,11 +52,12 @@ services:
       FORGEMIND_ENVIRONMENT: development
       FORGEMIND_WEB_ORIGIN: http://localhost:3200
       FORGEMIND_LOG_LEVEL: INFO
+      FORGEMIND_DATABASE_URL: postgresql+psycopg://forgemind:forgemind@postgres:5432/forgemind
     ports:
       - '127.0.0.1:4200:4200'
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
