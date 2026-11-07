@@ -129,18 +129,19 @@ test('a person goes from sign-in to a pull request and back to the history', asy
     await expect(
       diff.locator('.diff-code span[style*="color"]').first(),
     ).toBeVisible();
-    expect(
-      await page.getByTestId('file-tree').locator('button').count(),
-    ).toBeGreaterThan(0);
+    await expect(
+      page.getByTestId('file-tree').locator('button').first(),
+    ).toBeVisible();
   });
 
   await test.step('8. review test and build results', async () => {
     await open(page, `/tasks/${taskId}`);
     const details = page.getByTestId('details');
+    // Counts do not wait; visibility does, and a slower machine needs it.
     await details.getByRole('tab', { name: /Commands/ }).click();
-    expect(await page.getByTestId('command').count()).toBeGreaterThan(0);
+    await expect(page.getByTestId('command').first()).toBeVisible();
     await details.getByRole('tab', { name: /Checks/ }).click();
-    expect(await page.getByTestId('check').count()).toBeGreaterThan(0);
+    await expect(page.getByTestId('check').first()).toBeVisible();
   });
 
   await test.step('9. understand which checks passed or failed', async () => {
