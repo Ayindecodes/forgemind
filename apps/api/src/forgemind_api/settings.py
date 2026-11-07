@@ -40,8 +40,16 @@ class Settings(BaseModel):
     # postgresql+psycopg://user:password@host:port/database; required outside
     # development, where the service can start without a database.
     database_url: str | None = None
+    # Where browsers reach this service; sign-in redirects point back here.
+    api_origin: str = "http://localhost:4200"
+    # "simulated" serves GitHub look-alike pages for development and tests;
+    # "github" talks to GitHub and needs the App's OAuth client.
+    github_provider: Literal["simulated", "github"] = "simulated"
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    session_days: int = Field(default=7, ge=1, le=90)
 
-    @field_validator("web_origin", "otel_endpoint")
+    @field_validator("web_origin", "otel_endpoint", "api_origin")
     @classmethod
     def _http_origin(cls, value: str | None) -> str | None:
         if value is None:
@@ -62,6 +70,19 @@ class Settings(BaseModel):
         if self.environment != "development" and self.database_url is None:
             raise ValueError(
                 f"{ENV_PREFIX}DATABASE_URL is required in {self.environment}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _github_credentials(self) -> Settings:
+        if self.environment == "production" and self.github_provider != "github":
+            raise ValueError("production must use the github provider")
+        if self.github_provider == "github" and not (
+            self.github_client_id and self.github_client_secret
+        ):
+            raise ValueError(
+                f"{ENV_PREFIX}GITHUB_CLIENT_ID and {ENV_PREFIX}GITHUB_CLIENT_SECRET "
+                "are required with the github provider"
             )
         return self
 
