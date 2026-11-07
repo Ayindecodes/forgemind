@@ -11,8 +11,12 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from forgemind_api.db import database_reachable, make_engine
+from forgemind_api.db import database_reachable, make_engine, make_session_factory
+from forgemind_api.errors import install_error_handlers
+from forgemind_api.github import PERSONAS, GitHubIdentity, RealGitHub, SimulatedGitHub
 from forgemind_api.logging import configure_logging, request_id_var
+from forgemind_api.routes import auth as auth_routes
+from forgemind_api.routes import organizations as organization_routes
 from forgemind_api.settings import Settings, load_settings
 from forgemind_api.telemetry import configure_telemetry
 
@@ -22,6 +26,8 @@ REQUEST_ID_HEADER = "x-request-id"
 # The contract's data-source header: this service serves real data.
 DATA_SOURCE_HEADER = "x-forgemind-data"
 DATA_SOURCE = "live"
+# The contract's provider header: where sign-in goes.
+GITHUB_PROVIDER_HEADER = "x-forgemind-github"
 
 
 class Health(BaseModel):
@@ -49,7 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["content-type", REQUEST_ID_HEADER],
-        expose_headers=[REQUEST_ID_HEADER, DATA_SOURCE_HEADER],
+        expose_headers=[REQUEST_ID_HEADER, DATA_SOURCE_HEADER, GITHUB_PROVIDER_HEADER],
     )
 
     @app.middleware("http")
@@ -63,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             response = await call_next(request)
             response.headers[REQUEST_ID_HEADER] = request_id
             response.headers[DATA_SOURCE_HEADER] = DATA_SOURCE
+            response.headers[GITHUB_PROVIDER_HEADER] = settings.github_provider
             log.info(
                 "request",
                 extra={
@@ -77,6 +84,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     engine = make_engine(settings.database_url) if settings.database_url else None
     app.state.engine = engine
+    app.state.session_factory = make_session_factory(engine) if engine else None
+    install_error_handlers(app)
+
+    if settings.github_provider == "github":
+        app.state.github = RealGitHub(
+            settings.github_client_id or "", settings.github_client_secret or ""
+        )
+    else:
+        simulated = SimulatedGitHub(settings.api_origin, settings.web_origin)
+        app.state.github = simulated
+
+        def is_new(persona: GitHubIdentity) -> bool:
+            # A persona without an organization goes through onboarding.
+            return persona is PERSONAS[1]
+
+        app.include_router(simulated.router(is_new))
+
+    app.include_router(auth_routes.router)
+    app.include_router(organization_routes.router)
 
     @app.get("/health", response_model=Health, responses={503: {"model": Health}})
     def health(response: Response) -> Health:

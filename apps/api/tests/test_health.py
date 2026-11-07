@@ -3,7 +3,12 @@ import logging
 
 from fastapi.testclient import TestClient
 
-from forgemind_api.app import DATA_SOURCE_HEADER, REQUEST_ID_HEADER, create_app
+from forgemind_api.app import (
+    DATA_SOURCE_HEADER,
+    GITHUB_PROVIDER_HEADER,
+    REQUEST_ID_HEADER,
+    create_app,
+)
 from forgemind_api.logging import JsonFormatter
 from forgemind_api.settings import Settings
 
@@ -77,3 +82,7 @@ def test_the_request_log_line_carries_the_request_id() -> None:
 
 def test_every_response_says_its_data_is_live() -> None:
     assert client().get("/health").headers[DATA_SOURCE_HEADER] == "live"
+
+
+def test_every_response_says_which_github_it_uses() -> None:
+    assert client().get("/health").headers[GITHUB_PROVIDER_HEADER] == "simulated"
