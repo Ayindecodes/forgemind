@@ -1,11 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 import { axeViolations } from './support/axe';
 import { open } from './support/open';
-
-const api = 'http://localhost:4110';
-const fetchJson = async <T>(page: Page, path: string) =>
-  (await (await page.request.get(`${api}${path}`)).json()) as T;
 
 test.describe('the overview', () => {
   test('leads with the work that needs someone', async ({ page }) => {
