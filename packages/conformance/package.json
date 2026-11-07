@@ -1,0 +1,22 @@
+{
+  "name": "@forgemind/conformance",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Calls a live API and checks every response against the contract.",
+  "scripts": {
+    "check": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@forgemind/contract": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}
