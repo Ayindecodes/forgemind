@@ -33,6 +33,12 @@ def client(database_url: str) -> Iterator[TestClient]:
     app.state.engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def fresh_jar(client: TestClient) -> None:
+    """No cookie from an earlier test, even one that failed half-way."""
+    client.cookies.clear()
+
+
 def sign_in_as(client: TestClient, login: str) -> tuple[dict[str, Any], str]:
     """Runs the whole flow and returns the session body and the cookie."""
     client.cookies.clear()
