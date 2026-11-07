@@ -39,4 +39,6 @@ The web app runs on http://localhost:3200 and the dev API on http://localhost:40
 
 The browser tests need Chromium: `pnpm --filter @forgemind/web exec playwright install chromium`.
 
+The API in `apps/api` is Python, managed by [uv](https://docs.astral.sh/uv/): `uv sync --project apps/api`, then `uv run --project apps/api pytest`. `docker compose up` starts it with PostgreSQL and Redis on localhost-only ports 4200, 5440 and 6390. See `apps/api/README.md`.
+
 `scripts/gate.sh` runs every check above in order and stops at the first failure; `scripts/gate.sh --fresh` does it on a clean clone of HEAD. The same script runs on GitHub Actions for every push and pull request.

@@ -21,6 +21,10 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
       - name: Install Chromium for the browser tests
         run: |
           pnpm install --frozen-lockfile
