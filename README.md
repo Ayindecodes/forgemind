@@ -23,6 +23,8 @@ The web app runs on http://localhost:3200 and the dev API on http://localhost:40
 
 [docs/quality-review.md](docs/quality-review.md) records the result of every item on the design brief's quality bar, with the test that proves it.
 
+[docs/backend-plan.md](docs/backend-plan.md) is the plan for the next phase: the real API, workers and sandboxes behind the same contract.
+
 ## Commands
 
 | Command            | What it does                                               |
