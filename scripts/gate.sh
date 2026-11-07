@@ -30,6 +30,7 @@ step() {
   echo "### $name"
   local started=$SECONDS
   "$@"
+  echo
   echo "### $name passed in $((SECONDS - started))s"
 }
 
