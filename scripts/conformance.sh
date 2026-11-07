@@ -30,18 +30,24 @@ dev_api() {
 }
 
 image() {
-  local tag=${1:-forgemind-api:gate} port=4298
+  local tag=${1:-forgemind-api:gate} port=4298 net=forgemind-conformance
   if ss -ltn | grep -q ":$port "; then
     echo "port $port is busy; stop whatever listens there first" >&2
     return 1
   fi
-  local id
-  id=$(docker run -d --rm -p "127.0.0.1:$port:4200" "$tag")
+  local db='postgresql+psycopg://fm:fm@conformance-db:5432/fm'
+  docker network create "$net" >/dev/null 2>&1 || true
+  local db_id api_id status=0
+  db_id=$(docker run -d --rm --network "$net" --name conformance-db -e POSTGRES_USER=fm -e POSTGRES_PASSWORD=fm -e POSTGRES_DB=fm postgres:17-alpine)
+  for _ in $(seq 1 30); do docker exec "$db_id" pg_isready -U fm -d fm >/dev/null 2>&1 && break; sleep 1; done
+  docker run --rm --network "$net" -e FORGEMIND_ENVIRONMENT=test -e "FORGEMIND_DATABASE_URL=$db" "$tag" python -m forgemind_api migrate >/dev/null
+  docker run --rm --network "$net" -e FORGEMIND_ENVIRONMENT=test -e "FORGEMIND_DATABASE_URL=$db" "$tag" python -m forgemind_api seed >/dev/null
+  api_id=$(docker run -d --rm --network "$net" -p "127.0.0.1:$port:4200" -e FORGEMIND_ENVIRONMENT=test -e "FORGEMIND_DATABASE_URL=$db" -e "FORGEMIND_API_ORIGIN=http://127.0.0.1:$port" -e FORGEMIND_WEB_ORIGIN=http://localhost:3120 "$tag")
   for _ in $(seq 1 30); do curl -sf "http://127.0.0.1:$port/health" >/dev/null && break; sleep 1; done
   echo "## API image $tag"
-  local status=0
-  "${harness[@]}" --base-url "http://127.0.0.1:$port" --data-source live || status=$?
-  docker stop "$id" >/dev/null 2>&1 || true
+  "${harness[@]}" --base-url "http://127.0.0.1:$port" --cookie fm_session=dev-owner --data-source live || status=$?
+  docker stop "$api_id" "$db_id" >/dev/null 2>&1 || true
+  docker network rm "$net" >/dev/null 2>&1 || true
   return "$status"
 }
 
