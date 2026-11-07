@@ -4,6 +4,7 @@ import {
   CreateOrganization,
   CreateTask,
   DATA_SOURCE_HEADER,
+  GITHUB_PROVIDER_HEADER,
   endpoints,
   EventQuery,
   FindingQuery,
@@ -96,12 +97,13 @@ export function createApp(store: Store) {
       // The web client sends credentials, as it will with real sessions.
       credentials: true,
       // Browsers hide custom response headers unless they are exposed.
-      exposeHeaders: [DATA_SOURCE_HEADER],
+      exposeHeaders: [DATA_SOURCE_HEADER, GITHUB_PROVIDER_HEADER],
     }),
   );
 
   app.use('*', async (c, next) => {
     c.header(DATA_SOURCE_HEADER, 'demo');
+    c.header(GITHUB_PROVIDER_HEADER, 'simulated');
     await next();
   });
 

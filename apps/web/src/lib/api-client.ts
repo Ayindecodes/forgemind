@@ -2,10 +2,12 @@ import {
   ApiError,
   buildPath,
   DATA_SOURCE_HEADER,
-  endpoints,
-  type DataSource,
+  DataSource,
   type EndpointKey,
+  endpoints,
   type ErrorCode,
+  GITHUB_PROVIDER_HEADER,
+  GitHubProviderKind,
 } from '@forgemind/contract';
 import type { z } from 'zod';
 
@@ -78,10 +80,17 @@ export class ApiContractError extends Error {
   }
 }
 
+/*
+ * Facts every response states in headers: whether the data is demo or live,
+ * and whether sign-in reaches github.com or simulated pages. Components read
+ * them through useSyncExternalStore.
+ */
 let dataSource: DataSource | 'unknown' = 'unknown';
+let githubProvider: GitHubProviderKind | 'unknown' = 'unknown';
 const sourceListeners = new Set<() => void>();
 
 export const getDataSource = () => dataSource;
+export const getGitHubProvider = () => githubProvider;
 
 export function subscribeDataSource(listener: () => void) {
   sourceListeners.add(listener);
@@ -91,11 +100,16 @@ export function subscribeDataSource(listener: () => void) {
 }
 
 function noteDataSource(response: Response) {
-  const header = response.headers.get(DATA_SOURCE_HEADER);
-  const next = header === 'demo' || header === 'live' ? header : 'unknown';
-  if (next === dataSource) return;
+  const source = DataSource.safeParse(response.headers.get(DATA_SOURCE_HEADER));
+  const provider = GitHubProviderKind.safeParse(
+    response.headers.get(GITHUB_PROVIDER_HEADER),
+  );
+  const nextSource = source.success ? source.data : 'unknown';
+  const nextProvider = provider.success ? provider.data : 'unknown';
+  if (nextSource === dataSource && nextProvider === githubProvider) return;
 
-  dataSource = next;
+  dataSource = nextSource;
+  githubProvider = nextProvider;
   sourceListeners.forEach((listener) => listener());
 }
 

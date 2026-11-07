@@ -5,6 +5,7 @@ import {
   ApiRequestError,
   ApiUnreachableError,
   getDataSource,
+  getGitHubProvider,
   request,
   subscribeDataSource,
 } from './api-client';
@@ -106,6 +107,23 @@ describe('request', () => {
 
     expect(getDataSource()).toBe('demo');
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('notes which GitHub the API signs in with', async () => {
+    vi.stubGlobal('fetch', async () =>
+      reply({ status: 'ok' }, { headers: { 'x-forgemind-github': 'github' } }),
+    );
+    await request('health', {});
+    expect(getGitHubProvider()).toBe('github');
+
+    vi.stubGlobal('fetch', async () =>
+      reply(
+        { status: 'ok' },
+        { headers: { 'x-forgemind-github': 'nonsense' } },
+      ),
+    );
+    await request('health', {});
+    expect(getGitHubProvider()).toBe('unknown');
   });
 
   it('is an error, not a crash, when the error body is not JSON', async () => {

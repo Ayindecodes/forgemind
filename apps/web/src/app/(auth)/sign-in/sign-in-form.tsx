@@ -9,12 +9,13 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/states';
 import { request } from '@/lib/api-client';
 import { rememberNext, safeNext } from '@/lib/auth';
-import { useDataSource } from '@/lib/queries';
+import { useDataSource, useGitHubProvider } from '@/lib/queries';
 
 export function SignInForm() {
   const params = useSearchParams();
   const next = safeNext(params.get('next'));
   const source = useDataSource();
+  const provider = useGitHubProvider();
 
   const start = useMutation({
     mutationFn: () => request('githubStart', { body: { next } }),
@@ -50,9 +51,11 @@ export function SignInForm() {
         You will be taken to GitHub and back. ForgeMind never sees your GitHub
         password.
       </p>
-      {source === 'demo' && (
+      {provider === 'simulated' && (
         <p className="flex items-center gap-2 text-sm text-fg-secondary">
-          <Badge tone="warning">Demo data</Badge>
+          <Badge tone="warning">
+            {source === 'demo' ? 'Demo data' : 'Simulated GitHub'}
+          </Badge>
           GitHub is simulated here. Pick who to sign in as on the next page.
         </p>
       )}

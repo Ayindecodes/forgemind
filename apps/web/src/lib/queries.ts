@@ -11,6 +11,7 @@ import { useSyncExternalStore } from 'react';
 import {
   ApiRequestError,
   getDataSource,
+  getGitHubProvider,
   request,
   subscribeDataSource,
 } from '@/lib/api-client';
@@ -188,3 +189,7 @@ const serverSource = () => 'unknown' as const;
 /** Whether the API is serving demo or live data, once a response has arrived. */
 export const useDataSource = () =>
   useSyncExternalStore(subscribeDataSource, getDataSource, serverSource);
+
+/** Whether sign-in reaches github.com or simulated pages, once a response has arrived. */
+export const useGitHubProvider = () =>
+  useSyncExternalStore(subscribeDataSource, getGitHubProvider, serverSource);
