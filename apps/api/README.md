@@ -12,7 +12,13 @@ uv run ruff check .     # lint
 uv run pyright          # types
 uv run python -m forgemind_api serve     # serve on FORGEMIND_PORT, 4200 by default
 uv run python -m forgemind_api migrate   # bring FORGEMIND_DATABASE_URL to the current schema
+uv run python -m forgemind_api seed      # development and test only: a known organization and fixed tokens
 ```
+
+Sign-in goes through GitHub. `FORGEMIND_GITHUB_PROVIDER=simulated`, the default
+outside production, serves GitHub look-alike pages instead, so the interface and
+the tests can sign in without credentials; `github` needs
+`FORGEMIND_GITHUB_CLIENT_ID` and `FORGEMIND_GITHUB_CLIENT_SECRET`.
 
 The schema lives in `src/forgemind_api/models` and its migrations in
 `src/forgemind_api/migrations`, generated with Alembic and reviewed. The

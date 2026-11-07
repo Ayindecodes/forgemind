@@ -7,7 +7,8 @@ import sys
 
 import uvicorn
 
-from forgemind_api.db import migrate
+from forgemind_api.db import make_engine, migrate
+from forgemind_api.seed import seed
 from forgemind_api.settings import SettingsError, load_settings
 
 
@@ -19,6 +20,11 @@ def main(argv: list[str]) -> int:
             raise SettingsError("FORGEMIND_DATABASE_URL is required to migrate")
         migrate(settings.database_url)
         return 0
+    if command == "seed":
+        if settings.database_url is None:
+            raise SettingsError("FORGEMIND_DATABASE_URL is required to seed")
+        seed(make_engine(settings.database_url), settings)
+        return 0
     if command == "serve":
         uvicorn.run(
             "forgemind_api.app:app",
@@ -28,7 +34,7 @@ def main(argv: list[str]) -> int:
             access_log=False,  # the app logs each request itself, with its id
         )
         return 0
-    sys.stderr.write(f"unknown command {command!r}; use serve or migrate\n")
+    sys.stderr.write(f"unknown command {command!r}; use serve, migrate or seed\n")
     return 2
 
 
