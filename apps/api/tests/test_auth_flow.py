@@ -134,6 +134,16 @@ def test_a_code_and_state_work_once(client: TestClient) -> None:
     second = client.post("/auth/github/callback", json={"code": code, "state": state})
     assert second.status_code == 400
     assert second.json()["error"]["code"] == "invalid"
+    # A fresh code for the same, already used state is refused too: the
+    # state guard holds on its own, not only because the code was spent.
+    again = client.get(
+        "/auth/github/authorize/continue",
+        params={"state": state, "user": "Ayindecodes"},
+        follow_redirects=False,
+    )
+    fresh = parse_qs(urlparse(again.headers["location"]).query)["code"][0]
+    reused = client.post("/auth/github/callback", json={"code": fresh, "state": state})
+    assert reused.status_code == 400
     unknown = client.post(
         "/auth/github/callback", json={"code": "nope", "state": "never-issued"}
     )
