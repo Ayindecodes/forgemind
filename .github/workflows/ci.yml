@@ -1,0 +1,36 @@
+name: Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install Chromium for the browser tests
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @forgemind/web exec playwright install --with-deps chromium
+      - name: Run the gate
+        run: scripts/gate.sh
+      - name: Keep the browser evidence of a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-results
+          path: apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
