@@ -41,4 +41,4 @@ The browser tests need Chromium: `pnpm --filter @forgemind/web exec playwright i
 
 The API in `apps/api` is Python, managed by [uv](https://docs.astral.sh/uv/): `uv sync --project apps/api`, then `uv run --project apps/api pytest`. `docker compose up` starts it with PostgreSQL and Redis on localhost-only ports 4200, 5440 and 6390. See `apps/api/README.md`.
 
-`scripts/gate.sh` runs every check above in order and stops at the first failure; `scripts/gate.sh --fresh` does it on a clean clone of HEAD. The same script runs on GitHub Actions for every push and pull request.
+`scripts/conformance.sh` runs `packages/conformance`, which calls a live service and checks every response against the contract: the dev API proves the harness, and the API image shows what it implements and lists the rest. `scripts/gate.sh` runs every check above in order and stops at the first failure; `scripts/gate.sh --fresh` does it on a clean clone of HEAD. The same script runs on GitHub Actions for every push and pull request.
