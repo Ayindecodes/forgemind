@@ -228,11 +228,26 @@ test.describe('top bar', () => {
     await trigger.click();
 
     const panel = page.getByTestId('notifications');
-    await expect(panel.getByText('Unread:')).not.toHaveCount(0);
+    const unread = panel.locator(
+      '[data-testid^="notification-"][data-read="false"]',
+    );
+    await expect(unread).not.toHaveCount(0);
+    const ids = await unread.evaluateAll((rows) =>
+      rows.map((row) => row.getAttribute('data-testid')),
+    );
     await panel.getByRole('button', { name: 'Mark all read' }).click();
 
-    await expect(panel.getByText('Unread:')).toHaveCount(0);
-    await expect(trigger).toHaveAttribute('aria-label', 'Notifications');
+    // Other workers may finish tasks meanwhile and add new unread ones, so
+    // the claim is about the rows that were there: each is read now, and
+    // the badge agrees with whatever is still unread.
+    for (const id of ids) {
+      await expect(panel.getByTestId(id!)).toHaveAttribute('data-read', 'true');
+    }
+    const remaining = await unread.count();
+    await expect(trigger).toHaveAttribute(
+      'aria-label',
+      remaining === 0 ? 'Notifications' : `Notifications, ${remaining} unread`,
+    );
   });
 
   test('changes the theme from the profile menu', async ({ page }) => {

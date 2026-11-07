@@ -85,6 +85,8 @@ export function Notifications() {
             {items.map(({ id, title, body, createdAt, readAt }) => (
               <li
                 key={id}
+                data-testid={`notification-${id}`}
+                data-read={readAt !== null}
                 className={cx(
                   'flex gap-3 px-3 py-2.5 text-sm',
                   readAt === null && 'bg-accent-subtle/40',
