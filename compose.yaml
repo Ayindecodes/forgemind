@@ -1,0 +1,51 @@
+# Local development: the API with PostgreSQL and Redis, on localhost-only ports
+# that nothing else on this machine uses.
+name: forgemind
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: forgemind
+      POSTGRES_PASSWORD: forgemind
+      POSTGRES_DB: forgemind
+    ports:
+      - '127.0.0.1:5440:5432'
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U forgemind -d forgemind']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '127.0.0.1:6390:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: apps/api
+      args:
+        COMMIT: ${COMMIT:-unknown}
+    environment:
+      FORGEMIND_ENVIRONMENT: development
+      FORGEMIND_WEB_ORIGIN: http://localhost:3200
+      FORGEMIND_LOG_LEVEL: INFO
+    ports:
+      - '127.0.0.1:4200:4200'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres:
