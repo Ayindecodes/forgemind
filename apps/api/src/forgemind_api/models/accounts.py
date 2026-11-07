@@ -148,3 +148,19 @@ class IntegrationCredential(IdMixin, TimestampsMixin, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (UniqueConstraint("organization_id", "provider", "kind"),)
+
+
+class SignInState(Base):
+    """One started sign-in: the state GitHub echoes back, where to go after."""
+
+    __tablename__ = "sign_in_states"
+
+    state: Mapped[str] = mapped_column(Text, primary_key=True)
+    next: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

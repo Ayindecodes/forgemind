@@ -6,6 +6,7 @@ from forgemind_api.models.accounts import (
     Organization,
     OrganizationMember,
     Session,
+    SignInState,
     User,
 )
 from forgemind_api.models.activity import AuditEvent, Notification, UsageRecord
@@ -42,6 +43,7 @@ __all__ = [
     "Run",
     "SecurityFinding",
     "Session",
+    "SignInState",
     "Task",
     "UsageRecord",
     "User",

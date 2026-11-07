@@ -9,7 +9,7 @@ EXPECTED_TABLES = set(Base.metadata.tables)
 def test_head_creates_every_table_the_models_declare(engine: Engine) -> None:
     present = set(inspect(engine).get_table_names()) - {"alembic_version"}
     assert present == EXPECTED_TABLES
-    assert len(EXPECTED_TABLES) == 19
+    assert len(EXPECTED_TABLES) == 20
 
 
 def test_enum_columns_are_enforced_by_check_constraints(engine: Engine) -> None:
