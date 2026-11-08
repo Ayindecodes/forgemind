@@ -39,18 +39,25 @@ test.describe('repositories', () => {
     await open(page, '/repositories');
     await page.getByTestId('repository-search').fill('workers');
     await expect(page.getByTestId('repository-count')).toHaveText(/^1 of /);
-    await expect(page.getByTestId('repository-repo-3')).toBeVisible();
+    // By name, not by seeded id: the real API numbers repositories differently.
+    await expect(
+      page.getByRole('link', { name: 'forgemind/workers' }),
+    ).toBeVisible();
     await page.getByTestId('repository-search').fill('');
 
     await page.getByTestId('repository-filter').click();
     await page.getByRole('option', { name: 'Needs attention' }).click();
     await expect(page.getByTestId('repository-count')).toHaveText(/^1 of /);
-    await expect(page.getByTestId('repository-repo-4')).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'acme/payments' }),
+    ).toBeVisible();
 
     await page.getByTestId('repository-filter').click();
     await page.getByRole('option', { name: 'Revoked' }).click();
-    await expect(page.getByTestId('repository-repo-5')).toBeVisible();
-    await expect(page.getByTestId('reconnect-repo-5')).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'acme/legacy-portal' }),
+    ).toBeVisible();
+    await expect(page.locator('[data-testid^="reconnect-"]')).toBeVisible();
   });
 
   test('connects a repository the App can see, then disconnects and reconnects it', async ({
