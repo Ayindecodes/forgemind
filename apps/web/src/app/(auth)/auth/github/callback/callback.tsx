@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/skeleton';
@@ -26,9 +26,15 @@ export function Callback() {
     },
   });
 
+  // The code works once. Development's strict mode runs effects twice, so
+  // the exchange is guarded, or the second attempt would fail with 400 and
+  // could paint an error over a sign-in that succeeded.
+  const exchanged = useRef(false);
   const { mutate } = finish;
   useEffect(() => {
-    if (code && state) mutate();
+    if (!code || !state || exchanged.current) return;
+    exchanged.current = true;
+    mutate();
   }, [code, state, mutate]);
 
   if (!code || !state || finish.error) {
