@@ -2,6 +2,7 @@
 
 from forgemind_api.models.accounts import (
     GitHubInstallation,
+    InstallState,
     IntegrationCredential,
     Organization,
     OrganizationMember,
@@ -33,6 +34,7 @@ __all__ = [
     "Base",
     "ExecutionEvent",
     "GitHubInstallation",
+    "InstallState",
     "IntegrationCredential",
     "Notification",
     "Organization",
