@@ -10,10 +10,15 @@ export type Implemented = Set<string> | 'all';
 
 /** `/tasks/{id}` in OpenAPI is `/tasks/:id` in the contract. */
 export const contractPath = (openApiPath: string) =>
-  openApiPath.replace(/\{([a-zA-Z]+)\}/g, ':$1');
+  openApiPath.replace(/\{(\w+)\}/g, ':$1');
 
+/**
+ * A route's identity: the method and the path with every parameter reduced
+ * to a wildcard, so `/tasks/:id` and `/tasks/:taskId` are the same route and
+ * a naming difference cannot hide an implemented endpoint.
+ */
 export const routeKey = (method: string, path: string) =>
-  `${method.toUpperCase()} ${path}`;
+  `${method.toUpperCase()} ${path.replace(/:\w+/g, ':*')}`;
 
 export function implementedFromDocument(document: unknown): Set<string> {
   const routes = new Set<string>();
