@@ -13,7 +13,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.66b2",
     "opentelemetry-sdk>=1.45.2",
     "psycopg[binary]>=3.3.8",
-    "pydantic>=2.14.3",
+    "pydantic[email]>=2.14.3",
     "sqlalchemy>=2.1.8",
     "uvicorn[standard]>=0.54.0",
 ]

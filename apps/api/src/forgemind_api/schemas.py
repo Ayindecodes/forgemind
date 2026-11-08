@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -66,3 +66,51 @@ class OrganizationOut(Wire):
     slug: str
     plan: Literal["free", "team", "enterprise"]
     created_at: datetime
+
+
+class CreateOrganizationIn(Wire):
+    name: str = Field(min_length=2, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def _trimmed(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("must be at least 2 characters")
+        return value
+
+
+class MemberOut(Wire):
+    user: UserOut
+    role: Role
+    joined_at: datetime
+
+
+class InviteMemberIn(Wire):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=80)
+    role: Role
+
+
+class UpdateMemberRoleIn(Wire):
+    role: Role
+
+
+class AuditTargetOut(Wire):
+    type: str
+    id: str
+    label: str
+
+
+class AuditEventOut(Wire):
+    id: str
+    actor_id: str
+    actor_name: str
+    action: str
+    target: AuditTargetOut
+    at: datetime
+
+
+class AuditPageOut(Wire):
+    items: list[AuditEventOut]
+    next_cursor: str | None
