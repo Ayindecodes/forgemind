@@ -12,11 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from forgemind_api.db import database_reachable, make_engine, make_session_factory
-from forgemind_api.errors import install_error_handlers
+from forgemind_api.errors import ApiFailure, install_error_handlers
 from forgemind_api.github import PERSONAS, GitHubIdentity, RealGitHub, SimulatedGitHub
 from forgemind_api.logging import configure_logging, request_id_var
+from forgemind_api.models import InstallState, Organization, User
 from forgemind_api.routes import auth as auth_routes
 from forgemind_api.routes import organizations as organization_routes
+from forgemind_api.routes import repositories as repository_routes
 from forgemind_api.settings import Settings, load_settings
 from forgemind_api.telemetry import configure_telemetry
 
@@ -89,7 +91,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     if settings.github_provider == "github":
         app.state.github = RealGitHub(
-            settings.github_client_id or "", settings.github_client_secret or ""
+            settings.github_client_id or "",
+            settings.github_client_secret or "",
+            app_id=settings.github_app_id or "",
+            private_key=settings.github_app_private_key or "",
+            slug=settings.github_app_slug,
         )
     else:
         simulated = SimulatedGitHub(settings.api_origin, settings.web_origin)
@@ -99,10 +105,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # A persona without an organization goes through onboarding.
             return persona is PERSONAS[1]
 
-        app.include_router(simulated.router(is_new))
+        def resolve_install(state: str) -> tuple[str, str]:
+            factory = app.state.session_factory
+            if factory is None:
+                raise ApiFailure("internal", "This service has no database configured")
+            with factory() as db:
+                pending = db.get(InstallState, state)
+                if pending is None or pending.used_at is not None:
+                    raise ApiFailure("invalid", "Unknown install state")
+                user = db.get(User, pending.user_id)
+                organization = db.get(Organization, pending.organization_id)
+                if user is None or organization is None or not user.github_login:
+                    raise ApiFailure("invalid", "Unknown install state")
+                return user.github_login, organization.name
+
+        app.include_router(simulated.router(is_new, resolve_install))
 
     app.include_router(auth_routes.router)
     app.include_router(organization_routes.router)
+    app.include_router(repository_routes.router)
 
     @app.get("/health", response_model=Health, responses={503: {"model": Health}})
     def health(response: Response) -> Health:

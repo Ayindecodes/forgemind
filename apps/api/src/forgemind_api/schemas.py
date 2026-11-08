@@ -114,3 +114,74 @@ class AuditEventOut(Wire):
 class AuditPageOut(Wire):
     items: list[AuditEventOut]
     next_cursor: str | None
+
+
+class PermissionOut(Wire):
+    name: str
+    access: Literal["read", "write"]
+    reason: str
+
+
+class InstallationOut(Wire):
+    id: str
+    account_login: str
+    account_type: Literal["user", "organization"]
+    repository_selection: Literal["all", "selected"]
+    permissions: list[PermissionOut]
+    installed_at: datetime
+
+
+class InstallationStateOut(Wire):
+    installation: InstallationOut | None
+
+
+class InstallCallbackIn(Wire):
+    installation_id: str = Field(min_length=1)
+    state: str = Field(min_length=1)
+
+
+class GitHubRepositoryOut(Wire):
+    github_id: int
+    full_name: str
+    private: bool
+    default_branch: str
+    description: str | None
+    pushed_at: datetime
+    connected_repository_id: str | None
+
+
+class LanguageOut(Wire):
+    name: str
+    share: float
+
+
+ConnectionStatus = Literal["connected", "analyzing", "error", "revoked"]
+
+
+class RepositoryOut(Wire):
+    id: str
+    organization_id: str
+    github_id: int
+    full_name: str
+    default_branch: str
+    private: bool
+    url: str
+    status: ConnectionStatus
+    status_message: str | None
+    languages: list[LanguageOut]
+    last_analyzed_commit: str | None
+    last_analyzed_at: datetime | None
+    open_findings: int
+    latest_task_id: str | None
+    pushed_at: datetime
+    connected_at: datetime
+
+
+class RepositoryPageOut(Wire):
+    items: list[RepositoryOut]
+    next_cursor: str | None
+
+
+class ConnectRepositoryIn(Wire):
+    github_id: int
+    full_name: str = Field(pattern=r"^[^/\s]+/[^/\s]+$")
