@@ -4,12 +4,15 @@ serves look-alike pages for development and tests."""
 from __future__ import annotations
 
 import secrets
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from html import escape
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 from urllib.parse import urlencode
 
 import httpx
+import jwt
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -25,23 +28,177 @@ class GitHubIdentity:
     avatar_url: str | None
 
 
+@dataclass(frozen=True)
+class GitHubRepo:
+    """A repository an installation can see."""
+
+    github_id: int
+    full_name: str
+    private: bool
+    default_branch: str
+    description: str | None
+    pushed_at: datetime
+    languages: tuple[tuple[str, float], ...] = ()
+
+
+@dataclass(frozen=True)
+class InstallationInfo:
+    installation_id: int
+    account_login: str
+    account_type: Literal["user", "organization"]
+    repository_selection: Literal["all", "selected"]
+
+
+# What the ForgeMind App asks GitHub for, and why, in the words the interface
+# shows. Nothing here grants administration, actions or secrets.
+APP_PERMISSIONS: tuple[dict[str, str], ...] = (
+    {
+        "name": "Metadata",
+        "access": "read",
+        "reason": "List the repositories you choose.",
+    },
+    {
+        "name": "Contents",
+        "access": "write",
+        "reason": "Read code and push working branches. Never the default branch.",
+    },
+    {
+        "name": "Pull requests",
+        "access": "write",
+        "reason": "Open pull requests for you to review.",
+    },
+    {"name": "Checks", "access": "read", "reason": "Read CI results on pull requests."},
+    {
+        "name": "Webhooks",
+        "access": "read",
+        "reason": "Hear about pushes and pull request changes.",
+    },
+)
+
+
 class GitHubProvider(Protocol):
     def authorize_url(self, state: str, redirect_uri: str) -> str: ...
     def identity_for_code(self, code: str, state: str) -> GitHubIdentity: ...
+    def install_url(self, state: str) -> str: ...
+    def installation(self, installation_id: int) -> InstallationInfo: ...
+    def installation_repositories(self, installation_id: int) -> list[GitHubRepo]: ...
 
 
 class RealGitHub:
-    """GitHub's OAuth web flow for a GitHub App's user authorization."""
+    """GitHub's OAuth web flow for a GitHub App's user authorization, and the
+    App's own installation endpoints, authenticated with a short-lived JWT."""
 
     def __init__(
         self,
         client_id: str,
         client_secret: str,
+        *,
+        app_id: str = "",
+        private_key: str = "",
+        slug: str = "forgemind",
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.client_id = client_id
         self.client_secret = client_secret
+        self.app_id = app_id
+        self.private_key = private_key.replace("\\n", "\n")
+        self.slug = slug
         self.client = httpx.Client(transport=transport, timeout=10)
+
+    def install_url(self, state: str) -> str:
+        query = urlencode({"state": state})
+        return f"https://github.com/apps/{self.slug}/installations/new?{query}"
+
+    def app_jwt(self) -> str:
+        """Identifies the App itself to GitHub for ten minutes at most."""
+        issued = int(time.time())
+        return jwt.encode(
+            {"iat": issued - 60, "exp": issued + 540, "iss": self.app_id},
+            self.private_key,
+            algorithm="RS256",
+        )
+
+    def installation(self, installation_id: int) -> InstallationInfo:
+        response = self.client.get(
+            f"https://api.github.com/app/installations/{installation_id}",
+            headers=self._app_headers(),
+        )
+        if not response.is_success:
+            raise ApiFailure(
+                "invalid", "GitHub does not know that installation. Try again."
+            )
+        data = as_object(response.json())
+        account = as_object(data.get("account"))
+        login = account.get("login")
+        kind = str(account.get("type") or "User").lower()
+        selection = data.get("repository_selection")
+        if not isinstance(login, str):
+            raise ApiFailure("invalid", "GitHub did not say whose installation it is.")
+        return InstallationInfo(
+            installation_id=installation_id,
+            account_login=login,
+            account_type="organization" if kind == "organization" else "user",
+            repository_selection="all" if selection == "all" else "selected",
+        )
+
+    def installation_repositories(self, installation_id: int) -> list[GitHubRepo]:
+        granted = self.client.post(
+            f"https://api.github.com/app/installations/{installation_id}/access_tokens",
+            headers=self._app_headers(),
+        )
+        token = as_object(granted.json() if granted.is_success else None).get("token")
+        if not isinstance(token, str) or not token:
+            raise ApiFailure("invalid", "GitHub refused an installation token.")
+        headers = {
+            "authorization": f"Bearer {token}",
+            "accept": "application/vnd.github+json",
+        }
+        repos: list[GitHubRepo] = []
+        page = 1
+        while True:
+            response = self.client.get(
+                "https://api.github.com/installation/repositories",
+                params={"per_page": 100, "page": page},
+                headers=headers,
+            )
+            if not response.is_success:
+                raise ApiFailure("invalid", "GitHub did not list the repositories.")
+            body = as_object(response.json())
+            raw_batch = body.get("repositories")
+            if not isinstance(raw_batch, list):
+                break
+            batch = cast(list[object], raw_batch)
+            for raw in batch:
+                repo = as_object(raw)
+                github_id = repo.get("id")
+                full_name = repo.get("full_name")
+                pushed = repo.get("pushed_at")
+                if not isinstance(github_id, int) or not isinstance(full_name, str):
+                    continue
+                description = repo.get("description")
+                branch = repo.get("default_branch")
+                repos.append(
+                    GitHubRepo(
+                        github_id=github_id,
+                        full_name=full_name,
+                        private=bool(repo.get("private")),
+                        default_branch=branch if isinstance(branch, str) else "main",
+                        description=description
+                        if isinstance(description, str)
+                        else None,
+                        pushed_at=parse_time(pushed),
+                    )
+                )
+            if len(batch) < 100:
+                break
+            page += 1
+        return repos
+
+    def _app_headers(self) -> dict[str, str]:
+        return {
+            "authorization": f"Bearer {self.app_jwt()}",
+            "accept": "application/vnd.github+json",
+        }
 
     def authorize_url(self, state: str, redirect_uri: str) -> str:
         query = urlencode(
@@ -138,6 +295,121 @@ PERSONAS: tuple[GitHubIdentity, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class SimulatedAccount:
+    login: str
+    account_type: Literal["user", "organization"]
+    repositories: tuple[GitHubRepo, ...]
+
+
+def _repo(
+    github_id: int,
+    full_name: str,
+    languages: tuple[tuple[str, float], ...],
+    pushed_minutes_ago: int,
+    private: bool = True,
+) -> GitHubRepo:
+    return GitHubRepo(
+        github_id=github_id,
+        full_name=full_name,
+        private=private,
+        default_branch="main",
+        description=f"{full_name.split('/')[1]} service",
+        pushed_at=datetime.now(UTC) - timedelta(minutes=pushed_minutes_ago),
+        languages=languages,
+    )
+
+
+# What each persona's GitHub account can show an installation, the same as
+# the dev API's seed so the interface's tests mean the same thing here.
+SIMULATED_ACCOUNTS: dict[str, SimulatedAccount] = {
+    "Ayindecodes": SimulatedAccount(
+        login="forgemind",
+        account_type="organization",
+        repositories=(
+            _repo(
+                811001,
+                "forgemind/api",
+                (("TypeScript", 0.88), ("SQL", 0.07), ("Shell", 0.05)),
+                30,
+            ),
+            _repo(
+                811002,
+                "forgemind/web",
+                (("TypeScript", 0.94), ("CSS", 0.06)),
+                90,
+                private=False,
+            ),
+            _repo(
+                811003,
+                "forgemind/workers",
+                (("Python", 0.76), ("Dockerfile", 0.14), ("Shell", 0.1)),
+                300,
+            ),
+            _repo(811004, "acme/payments", (("Go", 0.81), ("HCL", 0.19)), 2 * 1440),
+            _repo(
+                811005,
+                "acme/legacy-portal",
+                (("PHP", 0.9), ("JavaScript", 0.1)),
+                60 * 1440,
+            ),
+            _repo(
+                811006,
+                "forgemind/docs",
+                (("MDX", 0.9), ("TypeScript", 0.1)),
+                600,
+                private=False,
+            ),
+            _repo(811007, "forgemind/infra", (("HCL", 0.8), ("Shell", 0.2)), 3000),
+            _repo(
+                811008, "forgemind/cli", (("TypeScript", 0.85), ("Shell", 0.15)), 1400
+            ),
+        ),
+    ),
+    "samrivera": SimulatedAccount(
+        login="samrivera",
+        account_type="user",
+        repositories=(
+            _repo(
+                920001, "samrivera/notes-api", (("TypeScript", 0.95), ("SQL", 0.05)), 90
+            ),
+            _repo(
+                920002,
+                "samrivera/shop-web",
+                (("TypeScript", 0.8), ("CSS", 0.2)),
+                400,
+                private=False,
+            ),
+            _repo(
+                920003,
+                "samrivera/data-pipeline",
+                (("Python", 0.97), ("Shell", 0.03)),
+                2000,
+            ),
+            _repo(
+                920004,
+                "samrivera/dotfiles",
+                (("Shell", 0.7), ("Lua", 0.3)),
+                9000,
+                private=False,
+            ),
+            _repo(
+                920005,
+                "samrivera/legacy-cms",
+                (("PHP", 0.9), ("JavaScript", 0.1)),
+                30000,
+            ),
+        ),
+    ),
+}
+
+
+class ResolveInstall(Protocol):
+    """Who started an install state and for which organization: (login, name)."""
+
+    def __call__(self, state: str) -> tuple[str, str]: ...
+
+
 class SimulatedGitHub:
     """Pages that look like GitHub's and sign in a chosen persona."""
 
@@ -145,6 +417,38 @@ class SimulatedGitHub:
         self.api_origin = api_origin
         self.web_origin = web_origin
         self.codes: dict[str, tuple[str, GitHubIdentity]] = {}
+        self.installations: dict[int, SimulatedAccount] = {}
+        self._next_installation = 7000
+
+    def install_url(self, state: str) -> str:
+        return f"{self.api_origin}/auth/github/install?{urlencode({'state': state})}"
+
+    def issue_installation(self, login: str) -> int:
+        account = SIMULATED_ACCOUNTS.get(login)
+        if account is None:
+            raise ApiFailure("not_found", f"No simulated GitHub account {login!r}")
+        self._next_installation += 1
+        self.installations[self._next_installation] = account
+        return self._next_installation
+
+    def installation(self, installation_id: int) -> InstallationInfo:
+        account = self.installations.get(installation_id)
+        if account is None:
+            raise ApiFailure(
+                "invalid", "GitHub does not know that installation. Try again."
+            )
+        return InstallationInfo(
+            installation_id=installation_id,
+            account_login=account.login,
+            account_type=account.account_type,
+            repository_selection="selected",
+        )
+
+    def installation_repositories(self, installation_id: int) -> list[GitHubRepo]:
+        account = self.installations.get(installation_id)
+        if account is None:
+            raise ApiFailure("invalid", "GitHub does not know that installation.")
+        return list(account.repositories)
 
     def authorize_url(self, state: str, redirect_uri: str) -> str:
         return f"{self.api_origin}/auth/github/authorize?{urlencode({'state': state})}"
@@ -165,8 +469,33 @@ class SimulatedGitHub:
             )
         return issued[1]
 
-    def router(self, is_new: IsNew) -> APIRouter:
+    def router(self, is_new: IsNew, resolve_install: ResolveInstall) -> APIRouter:
         router = APIRouter(include_in_schema=False)
+
+        @router.get("/auth/github/install", response_class=HTMLResponse)
+        def install(state: str = Query(min_length=1)) -> str:
+            login, organization = resolve_install(state)
+            account = SIMULATED_ACCOUNTS.get(login)
+            if account is None:
+                raise ApiFailure("not_found", f"No simulated GitHub account {login!r}")
+            query = urlencode({"state": state})
+            return page(
+                f"Install ForgeMind on {account.login}",
+                f"This installs the ForgeMind GitHub App on the {account.account_type} "
+                f'{account.login}, for the ForgeMind organization "{organization}". '
+                "It asks only for what is listed below.",
+                [("Install", f"/auth/github/install/continue?{query}")],
+                permissions=APP_PERMISSIONS,
+            )
+
+        @router.get("/auth/github/install/continue")
+        def install_continue(state: str = Query(min_length=1)) -> RedirectResponse:
+            login, _organization = resolve_install(state)
+            installation_id = self.issue_installation(login)
+            query = urlencode({"installation_id": installation_id, "state": state})
+            return RedirectResponse(
+                f"{self.web_origin}/auth/github/installed?{query}", status_code=302
+            )
 
         @router.get("/auth/github/authorize", response_class=HTMLResponse)
         def authorize(state: str = Query(min_length=1)) -> str:
@@ -219,11 +548,22 @@ STYLE = """
 """
 
 
-def page(title: str, intro: str, actions: list[tuple[str, str]]) -> str:
+def page(
+    title: str,
+    intro: str,
+    actions: list[tuple[str, str]],
+    permissions: tuple[dict[str, str], ...] = (),
+) -> str:
     links = "".join(
         f'<a class="button" href="{escape(href)}">{escape(label)}</a>'
         for label, href in actions
     )
+    rows = "".join(
+        f"<tr><th>{escape(p['name'])}</th><td>{escape(p['access'])}</td>"
+        f"<td>{escape(p['reason'])}</td></tr>"
+        for p in permissions
+    )
+    table = f"<table>{rows}</table>" if rows else ""
     return "\n".join(
         [
             "<!doctype html>",
@@ -240,9 +580,20 @@ def page(title: str, intro: str, actions: list[tuple[str, str]]) -> str:
             "<main>",
             f"<h1>{escape(title)}</h1>",
             f"<p>{escape(intro)}</p>",
+            table,
             links,
             "</main>",
             "</body>",
             "</html>",
         ]
     )
+
+
+def parse_time(value: object) -> datetime:
+    """GitHub's ISO timestamps; now when absent."""
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    return datetime.now(UTC)

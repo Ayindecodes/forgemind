@@ -47,6 +47,12 @@ class Settings(BaseModel):
     github_provider: Literal["simulated", "github"] = "simulated"
     github_client_id: str | None = None
     github_client_secret: str | None = None
+    # The GitHub App itself: its slug for the install page, its id and private
+    # key for App tokens, and the secret GitHub signs webhooks with.
+    github_app_slug: str = "forgemind"
+    github_app_id: str | None = None
+    github_app_private_key: str | None = None
+    github_webhook_secret: str | None = None
     session_days: int = Field(default=7, ge=1, le=90)
 
     @field_validator("web_origin", "otel_endpoint", "api_origin")
@@ -77,13 +83,23 @@ class Settings(BaseModel):
     def _github_credentials(self) -> Settings:
         if self.environment == "production" and self.github_provider != "github":
             raise ValueError("production must use the github provider")
-        if self.github_provider == "github" and not (
-            self.github_client_id and self.github_client_secret
-        ):
-            raise ValueError(
-                f"{ENV_PREFIX}GITHUB_CLIENT_ID and {ENV_PREFIX}GITHUB_CLIENT_SECRET "
-                "are required with the github provider"
-            )
+        if self.github_provider == "github":
+            missing = [
+                name
+                for name, value in (
+                    ("GITHUB_CLIENT_ID", self.github_client_id),
+                    ("GITHUB_CLIENT_SECRET", self.github_client_secret),
+                    ("GITHUB_APP_ID", self.github_app_id),
+                    ("GITHUB_APP_PRIVATE_KEY", self.github_app_private_key),
+                    ("GITHUB_WEBHOOK_SECRET", self.github_webhook_secret),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    "the github provider needs "
+                    + ", ".join(f"{ENV_PREFIX}{name}" for name in missing)
+                )
         return self
 
 
