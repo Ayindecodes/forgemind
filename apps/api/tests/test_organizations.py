@@ -2,7 +2,6 @@
 
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -11,10 +10,10 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api.app import create_app
-from forgemind_api.auth import token_hash
-from forgemind_api.models import OrganizationMember, Session, User
+from forgemind_api.models import OrganizationMember
 from forgemind_api.seed import seed
 from forgemind_api.settings import Settings
+from tests.helpers import newcomer, session_for
 
 OWNER = {"cookie": "fm_session=dev-owner"}
 REVIEWER = {"cookie": "fm_session=dev-reviewer"}
@@ -27,29 +26,6 @@ def client(database_url: str, engine: Engine) -> Iterator[TestClient]:
     app = create_app(settings)
     yield TestClient(app)
     app.state.engine.dispose()
-
-
-def session_for(engine: Engine, email: str) -> dict[str, str]:
-    """A cookie for an existing person, created straight in the database."""
-    token = f"test-{uuid.uuid4().hex}"
-    with DbSession(engine) as db, db.begin():
-        user = db.scalars(select(User).where(User.email == email)).one()
-        db.add(
-            Session(
-                token_hash=token_hash(token),
-                user_id=user.id,
-                expires_at=datetime.now(UTC) + timedelta(days=1),
-            )
-        )
-    return {"cookie": f"fm_session={token}"}
-
-
-def newcomer(engine: Engine, name: str) -> dict[str, str]:
-    """A person with no organization at all, signed in."""
-    email = f"{uuid.uuid4().hex[:8]}@example.com"
-    with DbSession(engine) as db, db.begin():
-        db.add(User(email=email, name=name))
-    return session_for(engine, email)
 
 
 def invite(
