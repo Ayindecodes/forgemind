@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/skeleton';
@@ -25,9 +25,13 @@ export function Installed() {
     },
   });
 
+  // The state works once; development's strict mode runs effects twice.
+  const exchanged = useRef(false);
   const { mutate } = finish;
   useEffect(() => {
-    if (installationId && state) mutate();
+    if (!installationId || !state || exchanged.current) return;
+    exchanged.current = true;
+    mutate();
   }, [installationId, state, mutate]);
 
   if (!installationId || !state || finish.error) {
