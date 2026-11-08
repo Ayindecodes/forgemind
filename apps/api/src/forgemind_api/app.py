@@ -10,12 +10,13 @@ from typing import Literal
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from forgemind_api.db import database_reachable, make_engine, make_session_factory
 from forgemind_api.errors import ApiFailure, install_error_handlers
 from forgemind_api.github import PERSONAS, GitHubIdentity, RealGitHub, SimulatedGitHub
 from forgemind_api.logging import configure_logging, request_id_var
-from forgemind_api.models import InstallState, Organization, User
+from forgemind_api.models import GitHubInstallation, InstallState, Organization, User
 from forgemind_api.routes import auth as auth_routes
 from forgemind_api.routes import organizations as organization_routes
 from forgemind_api.routes import repositories as repository_routes
@@ -98,7 +99,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             slug=settings.github_app_slug,
         )
     else:
-        simulated = SimulatedGitHub(settings.api_origin, settings.web_origin)
+
+        def resolve_account(installation_id: int) -> str | None:
+            factory = app.state.session_factory
+            if factory is None:
+                return None
+            with factory() as db:
+                return db.scalar(
+                    select(GitHubInstallation.account_login).where(
+                        GitHubInstallation.installation_id == installation_id
+                    )
+                )
+
+        simulated = SimulatedGitHub(
+            settings.api_origin, settings.web_origin, resolve_account
+        )
         app.state.github = simulated
 
         def is_new(persona: GitHubIdentity) -> bool:

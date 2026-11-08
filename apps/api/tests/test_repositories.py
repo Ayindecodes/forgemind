@@ -84,6 +84,17 @@ def signed(payload: dict[str, Any]) -> tuple[bytes, dict[str, str]]:
     return body, {"x-hub-signature-256": signature, "content-type": "application/json"}
 
 
+def test_a_fresh_process_serves_a_seeded_installation(database_url: str) -> None:
+    """A restart must not forget which account an installation belongs to."""
+    app = create_app(Settings(environment="test", database_url=database_url))
+    try:
+        response = TestClient(app).get("/github/repositories", headers=OWNER)
+    finally:
+        app.state.engine.dispose()
+    assert response.status_code == 200, response.text
+    assert len(response.json()) == 8
+
+
 def test_the_seeded_installation_and_its_permissions(client: TestClient) -> None:
     response = client.get("/github/installation", headers=OWNER)
     assert response.status_code == 200

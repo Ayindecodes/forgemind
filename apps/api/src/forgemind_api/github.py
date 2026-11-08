@@ -320,10 +320,17 @@ def _repo(
     )
 
 
-# What each persona's GitHub account can show an installation, the same as
-# the dev API's seed so the interface's tests mean the same thing here.
+# Which GitHub account each persona installs the App on.
+PERSONA_ACCOUNTS: dict[str, str] = {
+    "Ayindecodes": "forgemind",
+    "samrivera": "samrivera",
+}
+
+# What each GitHub account can show an installation, keyed by the account's
+# login, the same as the dev API's seed so the interface's tests mean the
+# same thing here.
 SIMULATED_ACCOUNTS: dict[str, SimulatedAccount] = {
-    "Ayindecodes": SimulatedAccount(
+    "forgemind": SimulatedAccount(
         login="forgemind",
         account_type="organization",
         repositories=(
@@ -410,33 +417,61 @@ class ResolveInstall(Protocol):
     def __call__(self, state: str) -> tuple[str, str]: ...
 
 
+class ResolveAccount(Protocol):
+    """The GitHub account login a stored installation belongs to, if any."""
+
+    def __call__(self, installation_id: int) -> str | None: ...
+
+
+def account_for_persona(login: str) -> SimulatedAccount:
+    account = SIMULATED_ACCOUNTS.get(PERSONA_ACCOUNTS.get(login, ""))
+    if account is None:
+        raise ApiFailure("not_found", f"No simulated GitHub account for {login!r}")
+    return account
+
+
 class SimulatedGitHub:
     """Pages that look like GitHub's and sign in a chosen persona."""
 
-    def __init__(self, api_origin: str, web_origin: str) -> None:
+    def __init__(
+        self,
+        api_origin: str,
+        web_origin: str,
+        resolve_account: ResolveAccount | None = None,
+    ) -> None:
         self.api_origin = api_origin
         self.web_origin = web_origin
         self.codes: dict[str, tuple[str, GitHubIdentity]] = {}
         self.installations: dict[int, SimulatedAccount] = {}
         self._next_installation = 7000
+        # Installations made before this process started, or seeded, are not
+        # in memory; the service knows which account each one belongs to.
+        self.resolve_account = resolve_account
 
     def install_url(self, state: str) -> str:
         return f"{self.api_origin}/auth/github/install?{urlencode({'state': state})}"
 
     def issue_installation(self, login: str) -> int:
-        account = SIMULATED_ACCOUNTS.get(login)
-        if account is None:
-            raise ApiFailure("not_found", f"No simulated GitHub account {login!r}")
+        account = account_for_persona(login)
         self._next_installation += 1
         self.installations[self._next_installation] = account
         return self._next_installation
 
-    def installation(self, installation_id: int) -> InstallationInfo:
+    def _account(self, installation_id: int) -> SimulatedAccount:
         account = self.installations.get(installation_id)
+        if account is None and self.resolve_account is not None:
+            login = self.resolve_account(installation_id)
+            account = SIMULATED_ACCOUNTS.get(login) if login else None
+            if account is not None:
+                self.installations[installation_id] = account
         if account is None:
             raise ApiFailure(
                 "invalid", "GitHub does not know that installation. Try again."
             )
+        return account
+
+    def installation(self, installation_id: int) -> InstallationInfo:
+        account = self._account(installation_id)
         return InstallationInfo(
             installation_id=installation_id,
             account_login=account.login,
@@ -445,10 +480,7 @@ class SimulatedGitHub:
         )
 
     def installation_repositories(self, installation_id: int) -> list[GitHubRepo]:
-        account = self.installations.get(installation_id)
-        if account is None:
-            raise ApiFailure("invalid", "GitHub does not know that installation.")
-        return list(account.repositories)
+        return list(self._account(installation_id).repositories)
 
     def authorize_url(self, state: str, redirect_uri: str) -> str:
         return f"{self.api_origin}/auth/github/authorize?{urlencode({'state': state})}"
@@ -475,9 +507,7 @@ class SimulatedGitHub:
         @router.get("/auth/github/install", response_class=HTMLResponse)
         def install(state: str = Query(min_length=1)) -> str:
             login, organization = resolve_install(state)
-            account = SIMULATED_ACCOUNTS.get(login)
-            if account is None:
-                raise ApiFailure("not_found", f"No simulated GitHub account {login!r}")
+            account = account_for_persona(login)
             query = urlencode({"state": state})
             return page(
                 f"Install ForgeMind on {account.login}",
