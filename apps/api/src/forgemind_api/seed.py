@@ -9,8 +9,15 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api.auth import token_hash
-from forgemind_api.github import PERSONAS
-from forgemind_api.models import Organization, OrganizationMember, Session, User
+from forgemind_api.github import APP_PERMISSIONS, PERSONAS
+from forgemind_api.models import (
+    GitHubInstallation,
+    Organization,
+    OrganizationMember,
+    Repository,
+    Session,
+    User,
+)
 from forgemind_api.settings import Settings, SettingsError
 
 PEOPLE: tuple[tuple[str, str, str, int | None, str | None], ...] = (
@@ -20,6 +27,80 @@ PEOPLE: tuple[tuple[str, str, str, int | None, str | None], ...] = (
     ("Chidi Okafor", "chidi@example.com", "chidiok", 90000003, "developer"),
     ("Lena Fischer", "lena@example.com", "lfischer", 90000004, "reviewer"),
     ("Sam Rivera", "sam@example.com", "samrivera", 90000005, None),
+)
+
+# The organization's repositories as the dev API seeds them: id, name,
+# private, languages, pushed minutes ago, status, message, commit, analysed
+# minutes ago.
+REPOSITORIES: tuple[
+    tuple[
+        int,
+        str,
+        bool,
+        tuple[tuple[str, float], ...],
+        int,
+        str,
+        str | None,
+        str | None,
+        int | None,
+    ],
+    ...,
+] = (
+    (
+        811001,
+        "forgemind/api",
+        True,
+        (("TypeScript", 0.88), ("SQL", 0.07), ("Shell", 0.05)),
+        30,
+        "connected",
+        None,
+        "a1b2c3d",
+        46,
+    ),
+    (
+        811002,
+        "forgemind/web",
+        False,
+        (("TypeScript", 0.94), ("CSS", 0.06)),
+        90,
+        "connected",
+        None,
+        "b1bb32f",
+        46,
+    ),
+    (
+        811003,
+        "forgemind/workers",
+        True,
+        (("Python", 0.76), ("Dockerfile", 0.14), ("Shell", 0.1)),
+        300,
+        "connected",
+        None,
+        "9e8d7c6",
+        46,
+    ),
+    (
+        811004,
+        "acme/payments",
+        True,
+        (("Go", 0.81), ("HCL", 0.19)),
+        2 * 1440,
+        "error",
+        "The GitHub App installation was suspended by the organization owner.",
+        "5a4b3c2",
+        3 * 1440,
+    ),
+    (
+        811005,
+        "acme/legacy-portal",
+        True,
+        (("PHP", 0.9), ("JavaScript", 0.1)),
+        60 * 1440,
+        "revoked",
+        "Access revoked",
+        None,
+        None,
+    ),
 )
 
 # Fixed tokens the interface's tests sign in with. Only their hashes are stored.
@@ -69,6 +150,64 @@ def seed(engine: Engine, settings: Settings) -> None:
                     )
                 else:
                     member.role = role
+        installation = db.scalars(
+            select(GitHubInstallation).where(
+                GitHubInstallation.organization_id == org.id
+            )
+        ).first()
+        if installation is None:
+            installation = GitHubInstallation(
+                organization_id=org.id,
+                installation_id=1001,
+                account_login="forgemind",
+                account_type="organization",
+                repository_selection="selected",
+                permissions=list(APP_PERMISSIONS),
+            )
+            db.add(installation)
+            db.flush()
+        base = datetime.now(UTC)
+        for (
+            github_id,
+            full_name,
+            private,
+            languages,
+            pushed,
+            status,
+            message,
+            commit,
+            analyzed,
+        ) in REPOSITORIES:
+            repo = db.scalars(
+                select(Repository).where(
+                    Repository.organization_id == org.id,
+                    Repository.github_id == github_id,
+                )
+            ).first()
+            if repo is None:
+                repo = Repository(
+                    organization_id=org.id,
+                    installation_id=installation.id,
+                    github_id=github_id,
+                    full_name=full_name,
+                    private=private,
+                    default_branch="main",
+                    url=f"https://github.com/{full_name}",
+                    status=status,
+                    connected_at=base - timedelta(days=30),
+                )
+                db.add(repo)
+            repo.status = status
+            repo.status_message = message
+            repo.languages = [
+                {"name": name, "share": share} for name, share in languages
+            ]
+            repo.pushed_at = base - timedelta(minutes=pushed)
+            repo.last_analyzed_commit = commit
+            repo.last_analyzed_at = (
+                base - timedelta(minutes=analyzed) if analyzed else None
+            )
+            repo.revoked_at = base - timedelta(days=5) if status == "revoked" else None
         for token, email, days in DEV_TOKENS:
             session = db.scalars(
                 select(Session).where(Session.token_hash == token_hash(token))
