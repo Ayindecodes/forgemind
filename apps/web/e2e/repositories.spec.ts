@@ -93,15 +93,18 @@ test.describe('repositories', () => {
     await page.getByTestId('repository-filter').click();
     await page.getByRole('option', { name: 'Revoked' }).click();
     await page.getByTestId(`reconnect-${id}`).click();
+    // The same record comes back, so the repository is listed once, with its
+    // history attached, and it is being indexed again.
     await expect
       .poll(
-        async () =>
-          (
-            await fetchJson<{ items: Repo[] }>(page, '/repositories?limit=200')
-          ).items.filter(({ fullName }) => fullName === 'forgemind/docs')
-            .length,
+        async () => (await fetchJson<Repo>(page, `/repositories/${id}`)).status,
       )
-      .toBe(2);
+      .not.toBe('revoked');
+    const listed = (
+      await fetchJson<{ items: Repo[] }>(page, '/repositories?limit=200')
+    ).items.filter(({ fullName }) => fullName === 'forgemind/docs');
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.id).toBe(id);
   });
 
   test('fits a phone', async ({ page }) => {

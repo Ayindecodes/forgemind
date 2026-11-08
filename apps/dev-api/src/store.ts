@@ -759,24 +759,34 @@ export function createStore(options: StoreOptions = {}) {
       const source = data.githubAccounts
         .get(session.user.id)
         ?.repositories.find((repo) => repo.githubId === input.githubId);
-      const id = nextId('repo');
+      // A revoked connection comes back as the same record, so its history
+      // of tasks and findings stays attached, the way the real API does it.
+      const revoked = [...data.repositories.values()].find(
+        (repo) =>
+          repo.organizationId === organizationId &&
+          repo.githubId === input.githubId &&
+          repo.status === 'revoked',
+      );
+      const id = revoked?.id ?? nextId('repo');
       const at = now().toISOString();
       const repo: Repository = {
-        id,
-        organizationId,
-        githubId: input.githubId,
-        fullName: input.fullName,
-        defaultBranch: source?.defaultBranch ?? 'main',
-        private: source?.private ?? false,
-        url: `https://github.com/${input.fullName}`,
+        ...(revoked ?? {
+          id,
+          organizationId,
+          githubId: input.githubId,
+          fullName: input.fullName,
+          defaultBranch: source?.defaultBranch ?? 'main',
+          private: source?.private ?? false,
+          url: `https://github.com/${input.fullName}`,
+          languages: [],
+          lastAnalyzedCommit: null,
+          lastAnalyzedAt: null,
+          openFindings: 0,
+          latestTaskId: null,
+          pushedAt: source?.pushedAt ?? at,
+        }),
         status: 'analyzing',
         statusMessage: 'Indexing the repository',
-        languages: [],
-        lastAnalyzedCommit: null,
-        lastAnalyzedAt: null,
-        openFindings: 0,
-        latestTaskId: null,
-        pushedAt: source?.pushedAt ?? at,
         connectedAt: at,
       };
       data.repositories.set(id, repo);
