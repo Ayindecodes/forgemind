@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 
 import { GitHubMark } from '@/components/brand/github-mark';
@@ -16,6 +16,13 @@ export function SignInForm() {
   const next = safeNext(params.get('next'));
   const source = useDataSource();
   const provider = useGitHubProvider();
+  // Nothing has asked the API yet on a direct visit; the health answer's
+  // headers say whether the data is demo and whether GitHub is simulated.
+  useQuery({
+    queryKey: ['health'],
+    queryFn: () => request('health', {}),
+    staleTime: Infinity,
+  });
 
   const start = useMutation({
     mutationFn: () => request('githubStart', { body: { next } }),
