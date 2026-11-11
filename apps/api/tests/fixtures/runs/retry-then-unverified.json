@@ -1,0 +1,928 @@
+{
+  "scenario": "retry-then-unverified",
+  "events": [
+    {
+      "id": "run-1-1",
+      "runId": "run-1",
+      "seq": 1,
+      "at": "2026-11-06T12:00:00.300Z",
+      "type": "run.started",
+      "baseCommit": "abc1234",
+      "branch": "forgemind/task-1",
+      "expectsPatch": true,
+      "maxRetries": 2
+    },
+    {
+      "id": "run-1-2",
+      "runId": "run-1",
+      "seq": 2,
+      "at": "2026-11-06T12:00:01.100Z",
+      "type": "stage.started",
+      "stage": "inspection",
+      "attempt": 1,
+      "agent": "architect"
+    },
+    {
+      "id": "run-1-3",
+      "runId": "run-1",
+      "seq": 3,
+      "at": "2026-11-06T12:00:01.500Z",
+      "type": "operation",
+      "agent": "architect",
+      "text": "Reading the repository structure"
+    },
+    {
+      "id": "run-1-4",
+      "runId": "run-1",
+      "seq": 4,
+      "at": "2026-11-06T12:00:02.400Z",
+      "type": "file.inspected",
+      "path": "package.json"
+    },
+    {
+      "id": "run-1-5",
+      "runId": "run-1",
+      "seq": 5,
+      "at": "2026-11-06T12:00:03.500Z",
+      "type": "file.inspected",
+      "path": "src/retry.ts"
+    },
+    {
+      "id": "run-1-6",
+      "runId": "run-1",
+      "seq": 6,
+      "at": "2026-11-06T12:00:04.500Z",
+      "type": "file.inspected",
+      "path": "src/tasks/run.ts"
+    },
+    {
+      "id": "run-1-7",
+      "runId": "run-1",
+      "seq": 7,
+      "at": "2026-11-06T12:00:05.400Z",
+      "type": "file.inspected",
+      "path": "tests/retry.test.ts"
+    },
+    {
+      "id": "run-1-8",
+      "runId": "run-1",
+      "seq": 8,
+      "at": "2026-11-06T12:00:06.000Z",
+      "type": "command.started",
+      "commandId": "cmd-grep",
+      "command": "rg \"retryBudget\" src",
+      "cwd": null
+    },
+    {
+      "id": "run-1-9",
+      "runId": "run-1",
+      "seq": 9,
+      "at": "2026-11-06T12:00:06.300Z",
+      "type": "command.output",
+      "commandId": "cmd-grep",
+      "stream": "stdout",
+      "text": "src/retry.ts:41:  if (retryBudget < 0) return;\nsrc/tasks/run.ts:88:  retryBudget = plan.maxRetries;\n"
+    },
+    {
+      "id": "run-1-10",
+      "runId": "run-1",
+      "seq": 10,
+      "at": "2026-11-06T12:00:06.500Z",
+      "type": "command.finished",
+      "commandId": "cmd-grep",
+      "exitCode": 0,
+      "durationMs": 212
+    },
+    {
+      "id": "run-1-11",
+      "runId": "run-1",
+      "seq": 11,
+      "at": "2026-11-06T12:00:08.700Z",
+      "type": "agent.note",
+      "agent": "architect",
+      "text": "The retry budget is reset from the plan on every revision, so a run can retry more times than the task allows. The check at src/retry.ts:41 never fires."
+    },
+    {
+      "id": "run-1-12",
+      "runId": "run-1",
+      "seq": 12,
+      "at": "2026-11-06T12:00:09.500Z",
+      "type": "stage.finished",
+      "stage": "inspection",
+      "attempt": 1,
+      "status": "passed",
+      "summary": "4 files inspected, likely cause at src/retry.ts:41",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-13",
+      "runId": "run-1",
+      "seq": 13,
+      "at": "2026-11-06T12:00:10.000Z",
+      "type": "resources.sampled",
+      "cpuSeconds": 2.1,
+      "memoryMb": 310,
+      "sandboxSeconds": 9
+    },
+    {
+      "id": "run-1-14",
+      "runId": "run-1",
+      "seq": 14,
+      "at": "2026-11-06T12:00:10.700Z",
+      "type": "stage.started",
+      "stage": "planning",
+      "attempt": 1,
+      "agent": "architect"
+    },
+    {
+      "id": "run-1-15",
+      "runId": "run-1",
+      "seq": 15,
+      "at": "2026-11-06T12:00:11.100Z",
+      "type": "operation",
+      "agent": "architect",
+      "text": "Drafting the implementation plan"
+    },
+    {
+      "id": "run-1-16",
+      "runId": "run-1",
+      "seq": 16,
+      "at": "2026-11-06T12:00:14.300Z",
+      "type": "agent.note",
+      "agent": "architect",
+      "text": "Plan: carry the remaining budget across revisions in src/retry.ts, add a regression test, and keep src/tasks/run.ts untouched apart from the type. Acceptance: the new test passes and the existing 41 tests keep passing."
+    },
+    {
+      "id": "run-1-17",
+      "runId": "run-1",
+      "seq": 17,
+      "at": "2026-11-06T12:00:15.200Z",
+      "type": "stage.finished",
+      "stage": "planning",
+      "attempt": 1,
+      "status": "passed",
+      "summary": "2 files to change, 1 test to add",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-18",
+      "runId": "run-1",
+      "seq": 18,
+      "at": "2026-11-06T12:00:15.900Z",
+      "type": "stage.started",
+      "stage": "implementation",
+      "attempt": 1,
+      "agent": "developer"
+    },
+    {
+      "id": "run-1-19",
+      "runId": "run-1",
+      "seq": 19,
+      "at": "2026-11-06T12:00:16.300Z",
+      "type": "operation",
+      "agent": "developer",
+      "text": "Applying the plan"
+    },
+    {
+      "id": "run-1-20",
+      "runId": "run-1",
+      "seq": 20,
+      "at": "2026-11-06T12:00:18.300Z",
+      "type": "file.changed",
+      "path": "src/retry.ts",
+      "change": "modified",
+      "additions": 18,
+      "deletions": 6
+    },
+    {
+      "id": "run-1-21",
+      "runId": "run-1",
+      "seq": 21,
+      "at": "2026-11-06T12:00:20.300Z",
+      "type": "file.changed",
+      "path": "tests/retry.test.ts",
+      "change": "added",
+      "additions": 42,
+      "deletions": 0
+    },
+    {
+      "id": "run-1-22",
+      "runId": "run-1",
+      "seq": 22,
+      "at": "2026-11-06T12:00:22.300Z",
+      "type": "file.changed",
+      "path": "src/types.ts",
+      "change": "modified",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "id": "run-1-23",
+      "runId": "run-1",
+      "seq": 23,
+      "at": "2026-11-06T12:00:23.200Z",
+      "type": "stage.finished",
+      "stage": "implementation",
+      "attempt": 1,
+      "status": "passed",
+      "summary": "3 files changed",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-24",
+      "runId": "run-1",
+      "seq": 24,
+      "at": "2026-11-06T12:00:23.700Z",
+      "type": "resources.sampled",
+      "cpuSeconds": 5.5,
+      "memoryMb": 512,
+      "sandboxSeconds": 23
+    },
+    {
+      "id": "run-1-25",
+      "runId": "run-1",
+      "seq": 25,
+      "at": "2026-11-06T12:00:24.400Z",
+      "type": "stage.started",
+      "stage": "testing",
+      "attempt": 1,
+      "agent": "testing"
+    },
+    {
+      "id": "run-1-26",
+      "runId": "run-1",
+      "seq": 26,
+      "at": "2026-11-06T12:00:24.900Z",
+      "type": "check.started",
+      "checkId": "tests",
+      "kind": "tests",
+      "label": "Unit tests",
+      "command": "pnpm test",
+      "required": true
+    },
+    {
+      "id": "run-1-27",
+      "runId": "run-1",
+      "seq": 27,
+      "at": "2026-11-06T12:00:25.100Z",
+      "type": "command.started",
+      "commandId": "cmd-test-1",
+      "command": "pnpm test",
+      "cwd": null
+    },
+    {
+      "id": "run-1-28",
+      "runId": "run-1",
+      "seq": 28,
+      "at": "2026-11-06T12:00:27.700Z",
+      "type": "command.output",
+      "commandId": "cmd-test-1",
+      "stream": "stdout",
+      "text": "> vitest run\n\n ✓ tests/tasks.test.ts (12)\n ✓ tests/plan.test.ts (29)\n"
+    },
+    {
+      "id": "run-1-29",
+      "runId": "run-1",
+      "seq": 29,
+      "at": "2026-11-06T12:00:29.500Z",
+      "type": "command.output",
+      "commandId": "cmd-test-1",
+      "stream": "stderr",
+      "text": " ✗ tests/retry.test.ts > keeps the remaining budget across revisions\n   AssertionError: expected 1 to be 0\n"
+    },
+    {
+      "id": "run-1-30",
+      "runId": "run-1",
+      "seq": 30,
+      "at": "2026-11-06T12:00:29.800Z",
+      "type": "command.output",
+      "commandId": "cmd-test-1",
+      "stream": "stdout",
+      "text": "\n Test Files  1 failed | 2 passed (3)\n      Tests  1 failed | 43 passed (44)\n"
+    },
+    {
+      "id": "run-1-31",
+      "runId": "run-1",
+      "seq": 31,
+      "at": "2026-11-06T12:00:30.000Z",
+      "type": "command.finished",
+      "commandId": "cmd-test-1",
+      "exitCode": 1,
+      "durationMs": 4480
+    },
+    {
+      "id": "run-1-32",
+      "runId": "run-1",
+      "seq": 32,
+      "at": "2026-11-06T12:00:30.200Z",
+      "type": "check.finished",
+      "checkId": "tests",
+      "status": "failed",
+      "durationMs": 4480,
+      "summary": "1 failed, 43 passed",
+      "counts": {
+        "passed": 43,
+        "failed": 1,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "run-1-33",
+      "runId": "run-1",
+      "seq": 33,
+      "at": "2026-11-06T12:00:30.800Z",
+      "type": "stage.finished",
+      "stage": "testing",
+      "attempt": 1,
+      "status": "failed",
+      "summary": null,
+      "failureReason": "keeps the remaining budget across revisions: expected 1 to be 0"
+    },
+    {
+      "id": "run-1-34",
+      "runId": "run-1",
+      "seq": 34,
+      "at": "2026-11-06T12:00:31.700Z",
+      "type": "retry.scheduled",
+      "attempt": 2,
+      "reason": "1 test failed",
+      "remaining": 1
+    },
+    {
+      "id": "run-1-35",
+      "runId": "run-1",
+      "seq": 35,
+      "at": "2026-11-06T12:00:32.400Z",
+      "type": "stage.started",
+      "stage": "implementation",
+      "attempt": 2,
+      "agent": "developer"
+    },
+    {
+      "id": "run-1-36",
+      "runId": "run-1",
+      "seq": 36,
+      "at": "2026-11-06T12:00:32.800Z",
+      "type": "operation",
+      "agent": "developer",
+      "text": "Revising the retry bookkeeping"
+    },
+    {
+      "id": "run-1-37",
+      "runId": "run-1",
+      "seq": 37,
+      "at": "2026-11-06T12:00:34.800Z",
+      "type": "file.changed",
+      "path": "src/retry.ts",
+      "change": "modified",
+      "additions": 21,
+      "deletions": 7
+    },
+    {
+      "id": "run-1-38",
+      "runId": "run-1",
+      "seq": 38,
+      "at": "2026-11-06T12:00:36.800Z",
+      "type": "file.changed",
+      "path": "tests/retry.test.ts",
+      "change": "added",
+      "additions": 42,
+      "deletions": 0
+    },
+    {
+      "id": "run-1-39",
+      "runId": "run-1",
+      "seq": 39,
+      "at": "2026-11-06T12:00:38.800Z",
+      "type": "file.changed",
+      "path": "src/types.ts",
+      "change": "modified",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "id": "run-1-40",
+      "runId": "run-1",
+      "seq": 40,
+      "at": "2026-11-06T12:00:39.700Z",
+      "type": "stage.finished",
+      "stage": "implementation",
+      "attempt": 2,
+      "status": "passed",
+      "summary": "3 files changed",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-41",
+      "runId": "run-1",
+      "seq": 41,
+      "at": "2026-11-06T12:00:40.200Z",
+      "type": "resources.sampled",
+      "cpuSeconds": 8.9,
+      "memoryMb": 512,
+      "sandboxSeconds": 37
+    },
+    {
+      "id": "run-1-42",
+      "runId": "run-1",
+      "seq": 42,
+      "at": "2026-11-06T12:00:40.900Z",
+      "type": "stage.started",
+      "stage": "testing",
+      "attempt": 2,
+      "agent": "testing"
+    },
+    {
+      "id": "run-1-43",
+      "runId": "run-1",
+      "seq": 43,
+      "at": "2026-11-06T12:00:41.400Z",
+      "type": "check.started",
+      "checkId": "tests",
+      "kind": "tests",
+      "label": "Unit tests",
+      "command": "pnpm test",
+      "required": true
+    },
+    {
+      "id": "run-1-44",
+      "runId": "run-1",
+      "seq": 44,
+      "at": "2026-11-06T12:00:41.600Z",
+      "type": "command.started",
+      "commandId": "cmd-test-2",
+      "command": "pnpm test",
+      "cwd": null
+    },
+    {
+      "id": "run-1-45",
+      "runId": "run-1",
+      "seq": 45,
+      "at": "2026-11-06T12:00:44.200Z",
+      "type": "command.output",
+      "commandId": "cmd-test-2",
+      "stream": "stdout",
+      "text": "> vitest run\n\n ✓ tests/tasks.test.ts (12)\n ✓ tests/plan.test.ts (29)\n"
+    },
+    {
+      "id": "run-1-46",
+      "runId": "run-1",
+      "seq": 46,
+      "at": "2026-11-06T12:00:46.000Z",
+      "type": "command.output",
+      "commandId": "cmd-test-2",
+      "stream": "stdout",
+      "text": " ✓ tests/retry.test.ts (3)\n\n Test Files  3 passed (3)\n      Tests  44 passed (44)\n"
+    },
+    {
+      "id": "run-1-47",
+      "runId": "run-1",
+      "seq": 47,
+      "at": "2026-11-06T12:00:46.200Z",
+      "type": "command.finished",
+      "commandId": "cmd-test-2",
+      "exitCode": 0,
+      "durationMs": 4310
+    },
+    {
+      "id": "run-1-48",
+      "runId": "run-1",
+      "seq": 48,
+      "at": "2026-11-06T12:00:46.400Z",
+      "type": "check.finished",
+      "checkId": "tests",
+      "status": "passed",
+      "durationMs": 4310,
+      "summary": "44 passed",
+      "counts": {
+        "passed": 44,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "run-1-49",
+      "runId": "run-1",
+      "seq": 49,
+      "at": "2026-11-06T12:00:47.000Z",
+      "type": "stage.finished",
+      "stage": "testing",
+      "attempt": 2,
+      "status": "passed",
+      "summary": "44 tests passed",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-50",
+      "runId": "run-1",
+      "seq": 50,
+      "at": "2026-11-06T12:00:47.700Z",
+      "type": "stage.started",
+      "stage": "review",
+      "attempt": 1,
+      "agent": "review"
+    },
+    {
+      "id": "run-1-51",
+      "runId": "run-1",
+      "seq": 51,
+      "at": "2026-11-06T12:00:48.100Z",
+      "type": "operation",
+      "agent": "review",
+      "text": "Reading the patch against the acceptance criteria"
+    },
+    {
+      "id": "run-1-52",
+      "runId": "run-1",
+      "seq": 52,
+      "at": "2026-11-06T12:00:50.500Z",
+      "type": "operation",
+      "agent": "security",
+      "text": "Scanning the changed files"
+    },
+    {
+      "id": "run-1-53",
+      "runId": "run-1",
+      "seq": 53,
+      "at": "2026-11-06T12:00:50.800Z",
+      "type": "check.started",
+      "checkId": "security",
+      "kind": "security_scan",
+      "label": "Security scan",
+      "command": "semgrep --config auto src",
+      "required": false
+    },
+    {
+      "id": "run-1-54",
+      "runId": "run-1",
+      "seq": 54,
+      "at": "2026-11-06T12:00:53.700Z",
+      "type": "check.finished",
+      "checkId": "security",
+      "status": "passed",
+      "durationMs": 2900,
+      "summary": "No findings in changed files",
+      "counts": null
+    },
+    {
+      "id": "run-1-55",
+      "runId": "run-1",
+      "seq": 55,
+      "at": "2026-11-06T12:00:54.900Z",
+      "type": "agent.note",
+      "agent": "review",
+      "text": "The change is limited to the retry bookkeeping and the new test covers the regression. No unrelated edits."
+    },
+    {
+      "id": "run-1-56",
+      "runId": "run-1",
+      "seq": 56,
+      "at": "2026-11-06T12:00:55.300Z",
+      "type": "review.finished",
+      "verdict": "approve",
+      "concerns": [],
+      "acceptanceCriteriaMet": true
+    },
+    {
+      "id": "run-1-57",
+      "runId": "run-1",
+      "seq": 57,
+      "at": "2026-11-06T12:00:55.800Z",
+      "type": "stage.finished",
+      "stage": "review",
+      "attempt": 1,
+      "status": "passed",
+      "summary": "Approved, no concerns",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-58",
+      "runId": "run-1",
+      "seq": 58,
+      "at": "2026-11-06T12:00:56.500Z",
+      "type": "stage.started",
+      "stage": "verification",
+      "attempt": 1,
+      "agent": "orchestrator"
+    },
+    {
+      "id": "run-1-59",
+      "runId": "run-1",
+      "seq": 59,
+      "at": "2026-11-06T12:00:56.900Z",
+      "type": "check.started",
+      "checkId": "build",
+      "kind": "build",
+      "label": "Build",
+      "command": "pnpm build",
+      "required": true
+    },
+    {
+      "id": "run-1-60",
+      "runId": "run-1",
+      "seq": 60,
+      "at": "2026-11-06T12:00:57.100Z",
+      "type": "command.started",
+      "commandId": "cmd-build",
+      "command": "pnpm build",
+      "cwd": null
+    },
+    {
+      "id": "run-1-61",
+      "runId": "run-1",
+      "seq": 61,
+      "at": "2026-11-06T12:00:59.100Z",
+      "type": "command.output",
+      "commandId": "cmd-build",
+      "stream": "stdout",
+      "text": "> tsc -p tsconfig.build.json\n"
+    },
+    {
+      "id": "run-1-62",
+      "runId": "run-1",
+      "seq": 62,
+      "at": "2026-11-06T12:01:01.700Z",
+      "type": "log",
+      "level": "error",
+      "text": "sandbox: container exceeded 2048 MiB and was killed"
+    },
+    {
+      "id": "run-1-63",
+      "runId": "run-1",
+      "seq": 63,
+      "at": "2026-11-06T12:01:01.800Z",
+      "type": "command.finished",
+      "commandId": "cmd-build",
+      "exitCode": 137,
+      "durationMs": 4600
+    },
+    {
+      "id": "run-1-64",
+      "runId": "run-1",
+      "seq": 64,
+      "at": "2026-11-06T12:01:02.000Z",
+      "type": "check.finished",
+      "checkId": "build",
+      "status": "error",
+      "durationMs": 4600,
+      "summary": "The sandbox ran out of memory before the build finished",
+      "counts": null
+    },
+    {
+      "id": "run-1-65",
+      "runId": "run-1",
+      "seq": 65,
+      "at": "2026-11-06T12:01:02.300Z",
+      "type": "log",
+      "level": "warn",
+      "text": "Skipping typecheck and lint: the sandbox is gone"
+    },
+    {
+      "id": "run-1-66",
+      "runId": "run-1",
+      "seq": 66,
+      "at": "2026-11-06T12:01:02.800Z",
+      "type": "stage.finished",
+      "stage": "verification",
+      "attempt": 1,
+      "status": "failed",
+      "summary": null,
+      "failureReason": "The build check could not run"
+    },
+    {
+      "id": "run-1-67",
+      "runId": "run-1",
+      "seq": 67,
+      "at": "2026-11-06T12:01:03.400Z",
+      "type": "stage.started",
+      "stage": "approval",
+      "attempt": 1,
+      "agent": "release"
+    },
+    {
+      "id": "run-1-68",
+      "runId": "run-1",
+      "seq": 68,
+      "at": "2026-11-06T12:01:03.800Z",
+      "type": "operation",
+      "agent": "release",
+      "text": "Preparing the change summary for review"
+    },
+    {
+      "id": "run-1-69",
+      "runId": "run-1",
+      "seq": 69,
+      "at": "2026-11-06T12:01:05.600Z",
+      "type": "approval.requested"
+    }
+  ],
+  "run": {
+    "id": "run-1",
+    "taskId": "task-1",
+    "status": "awaiting_approval",
+    "outcome": "unverified",
+    "verification": "unverified",
+    "expectsPatch": true,
+    "stages": [
+      {
+        "id": "inspection",
+        "status": "passed",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "passed",
+            "agent": "architect",
+            "startedAt": "2026-11-06T12:00:01.100Z",
+            "finishedAt": "2026-11-06T12:00:09.500Z",
+            "summary": "4 files inspected, likely cause at src/retry.ts:41",
+            "failureReason": null
+          }
+        ]
+      },
+      {
+        "id": "planning",
+        "status": "passed",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "passed",
+            "agent": "architect",
+            "startedAt": "2026-11-06T12:00:10.700Z",
+            "finishedAt": "2026-11-06T12:00:15.200Z",
+            "summary": "2 files to change, 1 test to add",
+            "failureReason": null
+          }
+        ]
+      },
+      {
+        "id": "implementation",
+        "status": "passed",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "passed",
+            "agent": "developer",
+            "startedAt": "2026-11-06T12:00:15.900Z",
+            "finishedAt": "2026-11-06T12:00:23.200Z",
+            "summary": "3 files changed",
+            "failureReason": null
+          },
+          {
+            "number": 2,
+            "status": "passed",
+            "agent": "developer",
+            "startedAt": "2026-11-06T12:00:32.400Z",
+            "finishedAt": "2026-11-06T12:00:39.700Z",
+            "summary": "3 files changed",
+            "failureReason": null
+          }
+        ]
+      },
+      {
+        "id": "testing",
+        "status": "passed",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "failed",
+            "agent": "testing",
+            "startedAt": "2026-11-06T12:00:24.400Z",
+            "finishedAt": "2026-11-06T12:00:30.800Z",
+            "summary": null,
+            "failureReason": "keeps the remaining budget across revisions: expected 1 to be 0"
+          },
+          {
+            "number": 2,
+            "status": "passed",
+            "agent": "testing",
+            "startedAt": "2026-11-06T12:00:40.900Z",
+            "finishedAt": "2026-11-06T12:00:47.000Z",
+            "summary": "44 tests passed",
+            "failureReason": null
+          }
+        ]
+      },
+      {
+        "id": "review",
+        "status": "passed",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "passed",
+            "agent": "review",
+            "startedAt": "2026-11-06T12:00:47.700Z",
+            "finishedAt": "2026-11-06T12:00:55.800Z",
+            "summary": "Approved, no concerns",
+            "failureReason": null
+          }
+        ]
+      },
+      {
+        "id": "verification",
+        "status": "failed",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "failed",
+            "agent": "orchestrator",
+            "startedAt": "2026-11-06T12:00:56.500Z",
+            "finishedAt": "2026-11-06T12:01:02.800Z",
+            "summary": null,
+            "failureReason": "The build check could not run"
+          }
+        ]
+      },
+      {
+        "id": "approval",
+        "status": "running",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "running",
+            "agent": "release",
+            "startedAt": "2026-11-06T12:01:03.400Z",
+            "finishedAt": null,
+            "summary": null,
+            "failureReason": null
+          }
+        ]
+      }
+    ],
+    "checks": [
+      {
+        "id": "tests",
+        "kind": "tests",
+        "label": "Unit tests",
+        "command": "pnpm test",
+        "required": true,
+        "status": "passed",
+        "startedAt": "2026-11-06T12:00:41.400Z",
+        "finishedAt": "2026-11-06T12:00:46.400Z",
+        "durationMs": 4310,
+        "summary": "44 passed",
+        "counts": {
+          "passed": 44,
+          "failed": 0,
+          "skipped": 0
+        },
+        "outputArtifactId": null
+      },
+      {
+        "id": "security",
+        "kind": "security_scan",
+        "label": "Security scan",
+        "command": "semgrep --config auto src",
+        "required": false,
+        "status": "passed",
+        "startedAt": "2026-11-06T12:00:50.800Z",
+        "finishedAt": "2026-11-06T12:00:53.700Z",
+        "durationMs": 2900,
+        "summary": "No findings in changed files",
+        "counts": null,
+        "outputArtifactId": null
+      },
+      {
+        "id": "build",
+        "kind": "build",
+        "label": "Build",
+        "command": "pnpm build",
+        "required": true,
+        "status": "error",
+        "startedAt": "2026-11-06T12:00:56.900Z",
+        "finishedAt": "2026-11-06T12:01:02.000Z",
+        "durationMs": 4600,
+        "summary": "The sandbox ran out of memory before the build finished",
+        "counts": null,
+        "outputArtifactId": null
+      }
+    ],
+    "activeAgent": null,
+    "currentOperation": null,
+    "activeFiles": [],
+    "retries": {
+      "used": 1,
+      "max": 2
+    },
+    "diff": {
+      "filesChanged": 3,
+      "additions": 65,
+      "deletions": 8
+    },
+    "review": {
+      "verdict": "approve",
+      "concerns": [],
+      "acceptanceCriteriaMet": true
+    },
+    "resources": {
+      "cpuSeconds": 8.9,
+      "memoryPeakMb": 512,
+      "sandboxSeconds": 37
+    },
+    "baseCommit": "abc1234",
+    "branch": "forgemind/task-1",
+    "lastSeq": 69,
+    "startedAt": "2026-11-06T12:00:00.300Z",
+    "finishedAt": null,
+    "error": null
+  }
+}

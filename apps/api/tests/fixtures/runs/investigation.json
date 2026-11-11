@@ -1,0 +1,354 @@
+{
+  "scenario": "investigation",
+  "events": [
+    {
+      "id": "run-1-1",
+      "runId": "run-1",
+      "seq": 1,
+      "at": "2026-11-06T12:00:00.300Z",
+      "type": "run.started",
+      "baseCommit": "abc1234",
+      "branch": null,
+      "expectsPatch": false,
+      "maxRetries": 2
+    },
+    {
+      "id": "run-1-2",
+      "runId": "run-1",
+      "seq": 2,
+      "at": "2026-11-06T12:00:01.100Z",
+      "type": "stage.started",
+      "stage": "inspection",
+      "attempt": 1,
+      "agent": "architect"
+    },
+    {
+      "id": "run-1-3",
+      "runId": "run-1",
+      "seq": 3,
+      "at": "2026-11-06T12:00:01.500Z",
+      "type": "operation",
+      "agent": "architect",
+      "text": "Reading the repository structure"
+    },
+    {
+      "id": "run-1-4",
+      "runId": "run-1",
+      "seq": 4,
+      "at": "2026-11-06T12:00:02.400Z",
+      "type": "file.inspected",
+      "path": "package.json"
+    },
+    {
+      "id": "run-1-5",
+      "runId": "run-1",
+      "seq": 5,
+      "at": "2026-11-06T12:00:03.500Z",
+      "type": "file.inspected",
+      "path": "src/retry.ts"
+    },
+    {
+      "id": "run-1-6",
+      "runId": "run-1",
+      "seq": 6,
+      "at": "2026-11-06T12:00:04.500Z",
+      "type": "file.inspected",
+      "path": "src/tasks/run.ts"
+    },
+    {
+      "id": "run-1-7",
+      "runId": "run-1",
+      "seq": 7,
+      "at": "2026-11-06T12:00:05.400Z",
+      "type": "file.inspected",
+      "path": "tests/retry.test.ts"
+    },
+    {
+      "id": "run-1-8",
+      "runId": "run-1",
+      "seq": 8,
+      "at": "2026-11-06T12:00:06.000Z",
+      "type": "command.started",
+      "commandId": "cmd-grep",
+      "command": "rg \"retryBudget\" src",
+      "cwd": null
+    },
+    {
+      "id": "run-1-9",
+      "runId": "run-1",
+      "seq": 9,
+      "at": "2026-11-06T12:00:06.300Z",
+      "type": "command.output",
+      "commandId": "cmd-grep",
+      "stream": "stdout",
+      "text": "src/retry.ts:41:  if (retryBudget < 0) return;\nsrc/tasks/run.ts:88:  retryBudget = plan.maxRetries;\n"
+    },
+    {
+      "id": "run-1-10",
+      "runId": "run-1",
+      "seq": 10,
+      "at": "2026-11-06T12:00:06.500Z",
+      "type": "command.finished",
+      "commandId": "cmd-grep",
+      "exitCode": 0,
+      "durationMs": 212
+    },
+    {
+      "id": "run-1-11",
+      "runId": "run-1",
+      "seq": 11,
+      "at": "2026-11-06T12:00:08.700Z",
+      "type": "agent.note",
+      "agent": "architect",
+      "text": "The retry budget is reset from the plan on every revision, so a run can retry more times than the task allows. The check at src/retry.ts:41 never fires."
+    },
+    {
+      "id": "run-1-12",
+      "runId": "run-1",
+      "seq": 12,
+      "at": "2026-11-06T12:00:09.500Z",
+      "type": "stage.finished",
+      "stage": "inspection",
+      "attempt": 1,
+      "status": "passed",
+      "summary": "4 files inspected, likely cause at src/retry.ts:41",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-13",
+      "runId": "run-1",
+      "seq": 13,
+      "at": "2026-11-06T12:00:10.000Z",
+      "type": "resources.sampled",
+      "cpuSeconds": 2.1,
+      "memoryMb": 310,
+      "sandboxSeconds": 9
+    },
+    {
+      "id": "run-1-14",
+      "runId": "run-1",
+      "seq": 14,
+      "at": "2026-11-06T12:00:10.700Z",
+      "type": "stage.started",
+      "stage": "planning",
+      "attempt": 1,
+      "agent": "architect"
+    },
+    {
+      "id": "run-1-15",
+      "runId": "run-1",
+      "seq": 15,
+      "at": "2026-11-06T12:00:11.100Z",
+      "type": "operation",
+      "agent": "architect",
+      "text": "Drafting the implementation plan"
+    },
+    {
+      "id": "run-1-16",
+      "runId": "run-1",
+      "seq": 16,
+      "at": "2026-11-06T12:00:14.300Z",
+      "type": "agent.note",
+      "agent": "architect",
+      "text": "Plan: carry the remaining budget across revisions in src/retry.ts, add a regression test, and keep src/tasks/run.ts untouched apart from the type. Acceptance: the new test passes and the existing 41 tests keep passing."
+    },
+    {
+      "id": "run-1-17",
+      "runId": "run-1",
+      "seq": 17,
+      "at": "2026-11-06T12:00:15.200Z",
+      "type": "stage.finished",
+      "stage": "planning",
+      "attempt": 1,
+      "status": "passed",
+      "summary": "2 files to change, 1 test to add",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-18",
+      "runId": "run-1",
+      "seq": 18,
+      "at": "2026-11-06T12:00:15.500Z",
+      "type": "stage.finished",
+      "stage": "implementation",
+      "attempt": 1,
+      "status": "skipped",
+      "summary": "Investigation only",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-19",
+      "runId": "run-1",
+      "seq": 19,
+      "at": "2026-11-06T12:00:15.700Z",
+      "type": "stage.finished",
+      "stage": "testing",
+      "attempt": 1,
+      "status": "skipped",
+      "summary": "Investigation only",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-20",
+      "runId": "run-1",
+      "seq": 20,
+      "at": "2026-11-06T12:00:16.300Z",
+      "type": "stage.started",
+      "stage": "review",
+      "attempt": 1,
+      "agent": "review"
+    },
+    {
+      "id": "run-1-21",
+      "runId": "run-1",
+      "seq": 21,
+      "at": "2026-11-06T12:00:18.700Z",
+      "type": "agent.note",
+      "agent": "review",
+      "text": "The report names the cause with evidence at src/retry.ts:41 and src/tasks/run.ts:88. It separates the confirmed reset from the suspected effect on billing."
+    },
+    {
+      "id": "run-1-22",
+      "runId": "run-1",
+      "seq": 22,
+      "at": "2026-11-06T12:00:19.000Z",
+      "type": "review.finished",
+      "verdict": "approve",
+      "concerns": [],
+      "acceptanceCriteriaMet": true
+    },
+    {
+      "id": "run-1-23",
+      "runId": "run-1",
+      "seq": 23,
+      "at": "2026-11-06T12:00:19.400Z",
+      "type": "stage.finished",
+      "stage": "review",
+      "attempt": 1,
+      "status": "passed",
+      "summary": "Report reviewed",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-24",
+      "runId": "run-1",
+      "seq": 24,
+      "at": "2026-11-06T12:00:19.600Z",
+      "type": "stage.finished",
+      "stage": "verification",
+      "attempt": 1,
+      "status": "skipped",
+      "summary": "Nothing to verify",
+      "failureReason": null
+    },
+    {
+      "id": "run-1-25",
+      "runId": "run-1",
+      "seq": 25,
+      "at": "2026-11-06T12:00:20.200Z",
+      "type": "run.finished",
+      "status": "completed",
+      "error": null
+    }
+  ],
+  "run": {
+    "id": "run-1",
+    "taskId": "task-1",
+    "status": "completed",
+    "outcome": "succeeded",
+    "verification": "unverified",
+    "expectsPatch": false,
+    "stages": [
+      {
+        "id": "inspection",
+        "status": "passed",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "passed",
+            "agent": "architect",
+            "startedAt": "2026-11-06T12:00:01.100Z",
+            "finishedAt": "2026-11-06T12:00:09.500Z",
+            "summary": "4 files inspected, likely cause at src/retry.ts:41",
+            "failureReason": null
+          }
+        ]
+      },
+      {
+        "id": "planning",
+        "status": "passed",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "passed",
+            "agent": "architect",
+            "startedAt": "2026-11-06T12:00:10.700Z",
+            "finishedAt": "2026-11-06T12:00:15.200Z",
+            "summary": "2 files to change, 1 test to add",
+            "failureReason": null
+          }
+        ]
+      },
+      {
+        "id": "implementation",
+        "status": "skipped",
+        "attempts": []
+      },
+      {
+        "id": "testing",
+        "status": "skipped",
+        "attempts": []
+      },
+      {
+        "id": "review",
+        "status": "passed",
+        "attempts": [
+          {
+            "number": 1,
+            "status": "passed",
+            "agent": "review",
+            "startedAt": "2026-11-06T12:00:16.300Z",
+            "finishedAt": "2026-11-06T12:00:19.400Z",
+            "summary": "Report reviewed",
+            "failureReason": null
+          }
+        ]
+      },
+      {
+        "id": "verification",
+        "status": "skipped",
+        "attempts": []
+      },
+      {
+        "id": "approval",
+        "status": "skipped",
+        "attempts": []
+      }
+    ],
+    "checks": [],
+    "activeAgent": null,
+    "currentOperation": null,
+    "activeFiles": [],
+    "retries": {
+      "used": 0,
+      "max": 2
+    },
+    "diff": null,
+    "review": {
+      "verdict": "approve",
+      "concerns": [],
+      "acceptanceCriteriaMet": true
+    },
+    "resources": {
+      "cpuSeconds": 2.1,
+      "memoryPeakMb": 310,
+      "sandboxSeconds": 9
+    },
+    "baseCommit": "abc1234",
+    "branch": null,
+    "lastSeq": 25,
+    "startedAt": "2026-11-06T12:00:00.300Z",
+    "finishedAt": "2026-11-06T12:00:20.200Z",
+    "error": null
+  }
+}
