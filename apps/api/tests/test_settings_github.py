@@ -2,7 +2,10 @@ import pytest
 
 from forgemind_api.settings import SettingsError, load_settings
 
-DB = {"FORGEMIND_DATABASE_URL": "postgresql+psycopg://a:b@db/c"}
+DB = {
+    "FORGEMIND_DATABASE_URL": "postgresql+psycopg://a:b@db/c",
+    "FORGEMIND_REDIS_URL": "redis://queue:6379/0",
+}
 
 
 def test_production_must_talk_to_github_itself() -> None:

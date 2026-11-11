@@ -11,6 +11,7 @@ def test_a_database_is_required_outside_development() -> None:
             {
                 "FORGEMIND_ENVIRONMENT": "staging",
                 "FORGEMIND_DATABASE_URL": "postgresql+psycopg://a:b@db/c",
+                "FORGEMIND_REDIS_URL": "redis://queue:6379/0",
             }
         ).environment
         == "staging"

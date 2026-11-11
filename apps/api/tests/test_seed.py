@@ -30,6 +30,10 @@ def test_the_seed_can_run_again_without_duplicating(
 def test_the_seed_refuses_outside_development_and_test(
     database_url: str, engine: Engine
 ) -> None:
-    settings = Settings(environment="staging", database_url=database_url)
+    settings = Settings(
+        environment="staging",
+        database_url=database_url,
+        redis_url="redis://queue:6379/0",
+    )
     with pytest.raises(SettingsError, match="development and test"):
         seed(engine, settings)

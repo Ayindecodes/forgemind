@@ -54,6 +54,21 @@ class Settings(BaseModel):
     github_app_private_key: str | None = None
     github_webhook_secret: str | None = None
     session_days: int = Field(default=7, ge=1, le=90)
+    # redis://host:port/db; the queue the workers take runs from. Required in
+    # staging and production. Without it tasks are recorded and wait.
+    redis_url: str | None = None
+    # How many runs one worker executes at a time.
+    worker_concurrency: int = Field(default=2, ge=1, le=16)
+    # A worker proves it still holds a run this often, and a run whose proof
+    # is older than the stale limit is taken to have lost its worker.
+    worker_heartbeat_seconds: float = Field(default=5, gt=0, le=60)
+    worker_stale_seconds: float = Field(default=30, gt=0, le=600)
+    # How many times a run may be picked up before it is failed instead.
+    worker_max_attempts: int = Field(default=3, ge=1, le=10)
+    # How often abandoned and undelivered runs are looked for, and how long a
+    # run may wait on the queue before it is put there again.
+    worker_sweep_seconds: float = Field(default=10, gt=0, le=300)
+    worker_redispatch_seconds: float = Field(default=120, gt=0, le=3600)
 
     @field_validator("web_origin", "otel_endpoint", "api_origin")
     @classmethod
@@ -71,11 +86,29 @@ class Settings(BaseModel):
             raise ValueError("must start with postgresql+psycopg://")
         return value
 
+    @field_validator("redis_url")
+    @classmethod
+    def _redis_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(("redis://", "rediss://")):
+            raise ValueError("must start with redis:// or rediss://")
+        return value
+
     @model_validator(mode="after")
     def _database_outside_development(self) -> Settings:
         if self.environment != "development" and self.database_url is None:
             raise ValueError(
                 f"{ENV_PREFIX}DATABASE_URL is required in {self.environment}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _queue_where_work_must_run(self) -> Settings:
+        if self.environment in ("staging", "production") and self.redis_url is None:
+            raise ValueError(f"{ENV_PREFIX}REDIS_URL is required in {self.environment}")
+        if self.worker_stale_seconds < 2 * self.worker_heartbeat_seconds:
+            raise ValueError(
+                f"{ENV_PREFIX}WORKER_STALE_SECONDS must be at least twice "
+                f"{ENV_PREFIX}WORKER_HEARTBEAT_SECONDS, or live runs look abandoned"
             )
         return self
 
