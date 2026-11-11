@@ -1,3 +1,5 @@
+from alembic.autogenerate import compare_metadata
+from alembic.migration import MigrationContext
 from sqlalchemy import Engine, inspect, text
 
 from forgemind_api.db import downgrade, migrate
@@ -28,3 +30,10 @@ def test_downgrade_removes_everything_and_upgrade_rebuilds_it(
     migrate(database_url)
     present = set(inspect(engine).get_table_names()) - {"alembic_version"}
     assert present == EXPECTED_TABLES
+
+
+def test_the_migrations_build_exactly_what_the_models_declare(engine: Engine) -> None:
+    with engine.connect() as connection:
+        context = MigrationContext.configure(connection, opts={"compare_type": True})
+        differences = compare_metadata(context, Base.metadata)
+    assert differences == []
