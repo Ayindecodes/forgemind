@@ -16,7 +16,8 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session, sessionmaker
 
 from forgemind_api.auth import now
-from forgemind_api.execution import locked_run
+from forgemind_api.errors import ApiFailure
+from forgemind_api.execution import append_event, locked_run
 from forgemind_api.models import Run
 from forgemind_api.pipeline import StageFailed, StepContext
 from forgemind_api.runstate import run_from_events
@@ -24,6 +25,7 @@ from forgemind_api.settings import Settings
 from forgemind_api.worker import (
     INTERRUPTED,
     INTERRUPTED_CHECK,
+    ProcessSessions,
     RecordingFailed,
     RunStopped,
     execute_run,
@@ -752,3 +754,76 @@ def test_the_sweeper_does_not_wait_for_a_run_someone_is_writing_to(
     assert not waited, "the sweep waited for the writer to finish"
     assert swept == [QUIET]
     assert sweep(sessions, settings, recorder) == QUIET | {"recovered": 1}
+
+
+# --- writers at the same moment
+
+
+def test_two_writers_never_give_two_events_the_same_number(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    lost_worker(sessions, run_id, settings, timedelta(seconds=0))
+    together = threading.Barrier(2)
+    failures: list[Exception] = []
+
+    def write(name: str) -> None:
+        together.wait(30)
+        for number in range(25):
+            try:
+                with sessions() as db, db.begin():
+                    run = db.get_one(Run, run_id)
+                    text = f"{name} {number}"
+                    append_event(db, run, "log", {"level": "info", "text": text})
+            except Exception as error:
+                failures.append(error)
+
+    writers = [threading.Thread(target=write, args=(name,)) for name in ("a", "b")]
+    for writer in writers:
+        writer.start()
+    for writer in writers:
+        writer.join(60)
+    assert failures == []
+    events = events_of(sessions, run_id)
+    assert [event["seq"] for event in events] == list(range(1, 52))
+    run = run_of(sessions, run_id)
+    assert (run.last_seq, run.state["lastSeq"]) == (51, 51)
+
+
+def test_a_cancel_arriving_as_the_run_finishes_waits_and_is_refused(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    lost_worker(sessions, run_id, settings, timedelta(seconds=0))
+    refused: list[str] = []
+
+    def cancel_it() -> None:
+        try:
+            cancel(sessions, run_id)
+        except ApiFailure as failure:
+            refused.append(failure.code)
+
+    canceller = threading.Thread(target=cancel_it)
+    with sessions() as db, db.begin():
+        run = locked_run(db, run_id)
+        assert run is not None
+        canceller.start()
+        canceller.join(0.5)
+        assert canceller.is_alive()  # waiting for whoever is writing
+        append_event(db, run, "run.finished", {"status": "completed", "error": None})
+    canceller.join(30)
+    assert refused == ["conflict"]
+    events = events_of(sessions, run_id)
+    assert kinds(events).count("run.finished") == 1
+    assert run_of(sessions, run_id).status == "completed"
+
+
+def test_each_process_gets_its_own_sessions_and_keeps_them(
+    own_database_url: str,
+) -> None:
+    sessions = ProcessSessions(own_database_url)
+    factory = sessions()
+    try:
+        assert sessions() is factory
+    finally:
+        factory.kw["bind"].dispose()
