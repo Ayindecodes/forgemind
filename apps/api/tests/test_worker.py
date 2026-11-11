@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
 import uuid
 
 import pytest
@@ -171,3 +173,61 @@ def test_an_internal_error_ends_the_run_without_showing_what_it_was(
     # member of the organization can read it.
     assert "hunter2" not in json.dumps(events) + json.dumps(run.state)
     assert "hunter2" in caplog.text
+
+
+# --- one delivery executes
+
+
+def test_a_run_is_executed_by_one_delivery_however_many_arrive(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    holding, go = threading.Event(), threading.Event()
+
+    def hold(context: StepContext) -> str | None:
+        holding.set()
+        assert go.wait(30)
+        return None
+
+    step = Scripted("inspection", hold)
+    verdicts: list[str] = []
+    first = threading.Thread(
+        target=lambda: verdicts.append(execute_run(sessions, run_id, settings, [step]))
+    )
+    first.start()
+    assert holding.wait(30)
+    assert execute_run(sessions, run_id, settings, [step]) == "held"
+    go.set()
+    first.join(30)
+    assert verdicts == ["executed"]
+    assert execute_run(sessions, run_id, settings, [step]) == "finished"
+    assert execute_run(sessions, uuid.uuid4(), settings, [step]) == "missing"
+    assert step.calls == 1
+    assert kinds(events_of(sessions, run_id)).count("run.started") == 1
+    assert run_of(sessions, run_id).attempts == 1
+
+
+def test_deliveries_arriving_together_start_the_run_once(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    step = Scripted("inspection", lambda _context: time.sleep(0.3))
+    together = threading.Barrier(6)
+    verdicts: list[str] = []
+
+    def deliver() -> None:
+        together.wait(30)
+        verdicts.append(execute_run(sessions, run_id, settings, [step]))
+
+    deliveries = [threading.Thread(target=deliver) for _ in range(6)]
+    for delivery in deliveries:
+        delivery.start()
+    for delivery in deliveries:
+        delivery.join(60)
+    assert len(verdicts) == 6 and verdicts.count("executed") == 1
+    assert set(verdicts) <= {"executed", "held", "finished"}
+    assert step.calls == 1
+    events = events_of(sessions, run_id)
+    assert kinds(events).count("run.started") == 1
+    assert kinds(events).count("run.finished") == 1
+    assert run_of(sessions, run_id).attempts == 1
