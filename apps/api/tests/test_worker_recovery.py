@@ -4,21 +4,26 @@ fails, with its events intact."""
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import threading
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
-from forgemind_api.queue import CeleryDispatcher, make_publisher
+from forgemind_api.app import create_app
+from forgemind_api.queue import EXECUTE_RUN, CeleryDispatcher, make_publisher
 from forgemind_api.runstate import run_from_events
 from forgemind_api.settings import Settings
 from forgemind_api.worker import INTERRUPTED, run_sweeper, sweep
 from tests.workers import (
+    ask_to_stop,
     events_of,
     kill,
     kinds,
@@ -34,6 +39,7 @@ from tests.workers import (
 
 Sessions = sessionmaker[Session]
 
+OWNER = {"cookie": "fm_session=dev-owner"}
 NOT_YET = "The {} stage is not available on this server yet, so the run stopped there."
 
 
@@ -60,6 +66,12 @@ def inside(sessions: Sessions, run_id: uuid.UUID, stage: str) -> bool:
         event["type"] == "log" and event["text"] == f"{stage} at work"
         for event in events_of(sessions, run_id)
     )
+
+
+def logged(log: Path) -> list[dict[str, Any]]:
+    """What a process wrote, which must be one JSON object to a line."""
+    lines = log.read_text().splitlines(keepends=True)
+    return [json.loads(line) for line in lines if line.endswith("\n")]
 
 
 def statuses(sessions: Sessions, run_id: uuid.UUID, stage: str) -> list[str]:
@@ -226,3 +238,88 @@ def test_a_stage_that_finished_before_its_worker_died_is_not_run_again(
     assert len(inspections) == 1
     assert kinds(after).count("run.finished") == 1
     assert run_of(sessions, run_id).attempts == 2
+
+
+def test_the_shipped_worker_takes_a_task_created_through_the_api(
+    settings: Settings, tmp_path: Path
+) -> None:
+    log = tmp_path / "worker.log"
+    app = create_app(settings)
+    client = TestClient(app)
+    try:
+        repositories = client.get("/repositories", headers=OWNER).json()["items"]
+        repository = next(r for r in repositories if r["status"] == "connected")
+        with worker_process(settings, log, "forgemind_api", "worker") as worker:
+            created = client.post(
+                "/tasks",
+                json={
+                    "repositoryId": repository["id"],
+                    "title": "Fix retry budget overflow",
+                    "request": "Stop retrying past the budget the task allows.",
+                    "category": "fix_bug",
+                },
+                headers=OWNER,
+            )
+            assert created.status_code == 201, created.text
+            task: dict[str, Any] = created.json()
+
+            def run() -> dict[str, Any]:
+                found: dict[str, Any] = client.get(
+                    f"/runs/{task['runId']}", headers=OWNER
+                ).json()
+                return found
+
+            wait_for(
+                lambda: run()["status"] == "completed",
+                "the worker to take the run and record where it stopped",
+                describe=log.read_text,
+            )
+
+            def handled() -> list[dict[str, Any]]:
+                return [r for r in logged(log) if r["message"] == "delivery handled"]
+
+            wait_for(
+                lambda: len(handled()) == 1,
+                "the worker to log the delivery",
+                describe=log.read_text,
+            )
+            assert (handled()[0]["run_id"], handled()[0]["verdict"]) == (
+                task["runId"],
+                "executed",
+            )
+            # Told to stop the way a container runtime tells it, it stops.
+            assert ask_to_stop(worker) == 0
+        finished = run()
+        events = client.get(f"/runs/{task['runId']}/events", headers=OWNER).json()
+        assert kinds(events) == ["run.started", "run.finished"]
+        assert events[1]["error"] == NOT_YET.format("inspection")
+        assert (finished["outcome"], finished["verification"]) == (
+            "failed",
+            "unverified",
+        )
+        assert client.get(f"/tasks/{task['id']}", headers=OWNER).json()["status"] == (
+            "failed"
+        )
+    finally:
+        app.state.engine.dispose()
+
+
+def test_the_sweeper_process_queues_what_never_reached_the_queue_and_stops_when_asked(
+    sessions: Sessions, settings: Settings, redis_url: str, tmp_path: Path
+) -> None:
+    log = tmp_path / "sweeper.log"
+    run_id = queued_run(sessions)
+    assert queued_messages(redis_url) == []
+    with worker_process(settings, log, "forgemind_api", "sweeper") as sweeper:
+        wait_for(
+            lambda: queued_messages(redis_url) == [(EXECUTE_RUN, [str(run_id)])],
+            "the sweeper to queue the run",
+            describe=log.read_text,
+        )
+        assert ask_to_stop(sweeper) == 0
+    assert run_of(sessions, run_id).dispatched_at is not None
+    assert [(r["message"], r.get("queued")) for r in logged(log)] == [
+        ("sweeper started", None),
+        ("swept", 1),
+        ("sweeper stopped", None),
+    ]
