@@ -21,6 +21,7 @@ from sqlalchemy import (
     Integer,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -138,10 +139,27 @@ class Run(IdMixin, TimestampsMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
     # The folded view: stages, checks, diff, review, resources, active agent.
     state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    # Who is executing the run, and how recently they proved they still are.
+    # Operational state, not part of the record: the events are the record.
+    worker_id: Mapped[str | None] = mapped_column(Text)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # How many times a worker has picked the run up, the first time included.
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # When the run was last put on the queue; null when that never succeeded.
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint("task_id", "number"),
         Index("ix_runs_organization_id_started_at", "organization_id", "started_at"),
+        # What the sweeper scans: the few runs that are not finished.
+        Index(
+            "ix_runs_unfinished",
+            "status",
+            "heartbeat_at",
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
     )
 
 
