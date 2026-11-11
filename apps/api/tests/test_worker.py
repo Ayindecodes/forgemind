@@ -16,6 +16,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session, sessionmaker
 
 from forgemind_api.auth import now
+from forgemind_api.execution import locked_run
 from forgemind_api.models import Run
 from forgemind_api.pipeline import StageFailed, StepContext
 from forgemind_api.runstate import run_from_events
@@ -597,3 +598,157 @@ def test_a_long_stage_keeps_its_run_while_its_worker_keeps_proving_it_is_there(
     assert seen == {"sweep": QUIET, "delivery": "held"}
     assert recorder.dispatched == []
     assert (run_of(sessions, run_id).attempts, step.calls) == (1, 1)
+
+
+# --- the sweeper
+
+
+def test_the_sweeper_queues_again_a_run_whose_worker_went_quiet(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    lost_worker(
+        sessions, run_id, settings, timedelta(seconds=5), [started("inspection")]
+    )
+    before = events_of(sessions, run_id)
+    recorder = Recorder()
+    assert sweep(sessions, settings, recorder) == QUIET | {"recovered": 1}
+    assert recorder.dispatched == [run_id]
+    run = run_of(sessions, run_id)
+    assert (run.status, run.worker_id, run.heartbeat_at) == ("running", None, None)
+    assert run.dispatched_at is not None
+    # The record is the next worker's to continue, not the sweeper's.
+    assert events_of(sessions, run_id) == before
+    # Already back on the queue: the next sweep does not pile on a second.
+    assert sweep(sessions, settings, recorder) == QUIET
+    assert recorder.dispatched == [run_id]
+
+
+def test_the_sweeper_ends_a_run_that_used_its_last_attempt(
+    sessions: Sessions, own_database_url: str
+) -> None:
+    settings = settings_for(own_database_url, worker_max_attempts=1)
+    run_id = queued_run(sessions)
+    lost_worker(
+        sessions, run_id, settings, timedelta(seconds=5), [started("inspection")]
+    )
+    before = events_of(sessions, run_id)
+    recorder = Recorder()
+    assert sweep(sessions, settings, recorder) == QUIET | {"stopped": 1}
+    assert recorder.dispatched == []
+    after = events_of(sessions, run_id)
+    assert after[: len(before)] == before
+    assert kinds(after[len(before) :]) == ["stage.finished", "run.finished"]
+    assert after[-2]["failureReason"] == INTERRUPTED
+    assert (
+        after[-1]["error"]
+        == "No worker finished this run in 1 attempt, so it was stopped."
+    )
+    run = run_of(sessions, run_id)
+    assert (run.status, run.outcome, run.worker_id) == ("completed", "failed", None)
+    assert task_of(sessions, run_id).status == "failed"
+    assert sweep(sessions, settings, recorder) == QUIET
+
+
+def test_the_sweeper_queues_a_run_that_never_reached_the_queue(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions, Recorder(accepts=False))
+    assert run_of(sessions, run_id).dispatched_at is None
+    recorder = Recorder()
+    assert sweep(sessions, settings, recorder) == QUIET | {"queued": 1}
+    assert recorder.dispatched == [run_id]
+    assert run_of(sessions, run_id).dispatched_at is not None
+    assert kinds(events_of(sessions, run_id)) == []
+    # Queued a moment ago: a worker may yet take it.
+    assert sweep(sessions, settings, recorder) == QUIET
+    # Still not taken long after: the message is presumed lost.
+    patience = timedelta(seconds=settings.worker_redispatch_seconds + 1)
+    assert sweep(sessions, settings, recorder, at=now() + patience) == QUIET | {
+        "queued": 1
+    }
+    assert recorder.dispatched == [run_id, run_id]
+
+
+def test_a_run_the_queue_would_not_take_is_offered_again_at_the_next_sweep(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions, Recorder(accepts=False))
+    refused = sweep(sessions, settings, Recorder(accepts=False))
+    assert refused == QUIET | {"queued": 1, "undelivered": 1}
+    assert run_of(sessions, run_id).dispatched_at is None
+    recorder = Recorder()
+    assert sweep(sessions, settings, recorder) == QUIET | {"queued": 1}
+    assert recorder.dispatched == [run_id]
+
+
+def test_the_sweeper_leaves_alone_runs_that_are_being_looked_after(
+    sessions: Sessions, own_database_url: str
+) -> None:
+    settings = settings_for(
+        own_database_url, worker_heartbeat_seconds=5, worker_stale_seconds=30
+    )
+    recorder = Recorder()
+    waiting = queued_run(sessions, recorder)
+    working = queued_run(sessions, recorder)
+    lost_worker(sessions, working, settings, timedelta(seconds=2))
+    finished = queued_run(sessions, recorder)
+    assert execute_run(sessions, finished, settings) == "executed"
+    assert recorder.dispatched == [waiting, working, finished]
+    assert sweep(sessions, settings, recorder) == QUIET
+    assert recorder.dispatched == [waiting, working, finished]
+    assert run_of(sessions, working).worker_id == "lost-worker"
+
+
+def test_the_sweeper_ends_a_run_past_its_time_budget_whatever_its_worker_says(
+    sessions: Sessions, own_database_url: str
+) -> None:
+    settings = settings_for(
+        own_database_url, worker_heartbeat_seconds=5, worker_stale_seconds=30
+    )
+    run_id = queued_run(sessions, budget={"maxMinutes": 1})
+    lost_worker(
+        sessions, run_id, settings, timedelta(seconds=120), [started("inspection")]
+    )
+    began = run_of(sessions, run_id).started_at
+    assert began is not None
+    with sessions() as db, db.begin():
+        # Its worker is still proving itself, 85 seconds in.
+        db.execute(
+            update(Run)
+            .where(Run.id == run_id)
+            .values(heartbeat_at=began + timedelta(seconds=85))
+        )
+    recorder = Recorder()
+    # Twenty seconds over: the worker is given the chance to stop itself.
+    early = began + timedelta(seconds=80)
+    assert sweep(sessions, settings, recorder, at=early) == QUIET
+    late = began + timedelta(seconds=95)
+    assert sweep(sessions, settings, recorder, at=late) == QUIET | {"stopped": 1}
+    events = events_of(sessions, run_id)
+    assert kinds(events[-2:]) == ["stage.finished", "run.finished"]
+    assert events[-1]["error"] == "Stopped at the time budget of 1 minute."
+    run = run_of(sessions, run_id)
+    assert (run.status, run.outcome, run.worker_id) == ("completed", "failed", None)
+    assert recorder.dispatched == []
+
+
+def test_the_sweeper_does_not_wait_for_a_run_someone_is_writing_to(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    lost_worker(sessions, run_id, settings, timedelta(seconds=5))
+    recorder = Recorder()
+    swept: list[dict[str, int]] = []
+    sweeping = threading.Thread(
+        target=lambda: swept.append(sweep(sessions, settings, recorder))
+    )
+    with sessions() as db, db.begin():
+        assert locked_run(db, run_id) is not None
+        sweeping.start()
+        sweeping.join(5)
+        waited = sweeping.is_alive()
+    sweeping.join(30)
+    assert not waited, "the sweep waited for the writer to finish"
+    assert swept == [QUIET]
+    assert sweep(sessions, settings, recorder) == QUIET | {"recovered": 1}
