@@ -106,8 +106,12 @@ export const plan: Probe[] = [
     key: 'runs',
     build: () => ({ query: { limit: '50' } }),
     after: (context, data) => {
-      const first = (data as Page<Run>).items[0];
+      const items = (data as Page<Run>).items;
+      const first = items[0];
       if (first) context.runId = first.id;
+      // The stream probe reads one message, so it needs a run with events.
+      const withEvents = items.find((run) => run.lastSeq > 0);
+      if (withEvents) context.streamRunId = withEvents.id;
     },
   },
   {
@@ -125,7 +129,7 @@ export const plan: Probe[] = [
     key: 'runEventStream',
     transport: 'sse',
     build: (context) => ({
-      params: { id: need(context, 'runId', 'a run') },
+      params: { id: need(context, 'streamRunId', 'a run with events') },
       query: { after: '0' },
     }),
   },
