@@ -1,5 +1,5 @@
-# Local development: the API with PostgreSQL and Redis, on localhost-only ports
-# that nothing else on this machine uses.
+# Local development: the API, a worker and the sweeper with PostgreSQL and
+# Redis, on localhost-only ports that nothing else on this machine uses.
 name: forgemind
 
 services:
@@ -67,8 +67,52 @@ services:
       FORGEMIND_API_ORIGIN: http://localhost:4200
       FORGEMIND_LOG_LEVEL: INFO
       FORGEMIND_DATABASE_URL: postgresql+psycopg://forgemind:forgemind@postgres:5432/forgemind
+      FORGEMIND_REDIS_URL: redis://redis:6379/0
     ports:
       - '127.0.0.1:4200:4200'
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Executes the runs the API queues. Killed mid-run, it leaves the run to
+  # the sweeper, which hands it to the next worker.
+  worker:
+    build:
+      context: apps/api
+      args:
+        COMMIT: ${COMMIT:-unknown}
+    command: ['python', '-m', 'forgemind_api', 'worker']
+    environment:
+      FORGEMIND_ENVIRONMENT: development
+      FORGEMIND_LOG_LEVEL: INFO
+      FORGEMIND_DATABASE_URL: postgresql+psycopg://forgemind:forgemind@postgres:5432/forgemind
+      FORGEMIND_REDIS_URL: redis://redis:6379/0
+    # The image's health check asks the API's port, which a worker has not got.
+    healthcheck:
+      disable: true
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Queues again the runs whose worker went quiet or whose message was lost,
+  # and ends the ones that may not be tried again.
+  sweeper:
+    build:
+      context: apps/api
+      args:
+        COMMIT: ${COMMIT:-unknown}
+    command: ['python', '-m', 'forgemind_api', 'sweeper']
+    environment:
+      FORGEMIND_ENVIRONMENT: development
+      FORGEMIND_LOG_LEVEL: INFO
+      FORGEMIND_DATABASE_URL: postgresql+psycopg://forgemind:forgemind@postgres:5432/forgemind
+      FORGEMIND_REDIS_URL: redis://redis:6379/0
+    healthcheck:
+      disable: true
     depends_on:
       seed:
         condition: service_completed_successfully
