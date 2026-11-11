@@ -13,7 +13,7 @@ from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
 from forgemind_api import execution as service
-from forgemind_api.deps import Current, Db
+from forgemind_api.deps import Current, Db, Queue
 from forgemind_api.models import Run
 from forgemind_api.organizations import require_org
 from forgemind_api.schemas import Wire
@@ -77,7 +77,9 @@ def tasks(
 
 
 @router.post("/tasks", status_code=201)
-def create_task(body: CreateTaskIn, db: Db, current: Current) -> dict[str, Any]:
+def create_task(
+    body: CreateTaskIn, db: Db, current: Current, queue: Queue
+) -> dict[str, Any]:
     budget = (
         {
             key: value
@@ -92,7 +94,14 @@ def create_task(body: CreateTaskIn, db: Db, current: Current) -> dict[str, Any]:
         else None
     )
     task = service.create_task(
-        db, current, body.repository_id, body.title, body.request, body.category, budget
+        db,
+        current,
+        body.repository_id,
+        body.title,
+        body.request,
+        body.category,
+        budget,
+        queue,
     )
     return service.task_json(task)
 

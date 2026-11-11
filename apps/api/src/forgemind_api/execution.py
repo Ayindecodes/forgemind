@@ -15,6 +15,7 @@ from forgemind_api.auth import Principal, now
 from forgemind_api.errors import ApiFailure
 from forgemind_api.models import ExecutionEvent, Notification, Run, Task
 from forgemind_api.organizations import audit, require_org, require_role
+from forgemind_api.queue import Dispatcher, dispatch_after_commit
 from forgemind_api.repositories import repository_of
 from forgemind_api.runstate import initial_run, reduce_run
 
@@ -155,6 +156,7 @@ def create_task(
     request: str,
     category: str,
     budget: dict[str, int] | None,
+    dispatcher: Dispatcher,
 ) -> Task:
     organization_id = require_org(principal)
     require_role(principal, ("owner", "admin", "developer"))
@@ -201,6 +203,7 @@ def create_task(
     audit(
         db, organization_id, principal.user, "task.created", "task", str(task.id), title
     )
+    dispatch_after_commit(db, dispatcher, run)
     return task
 
 

@@ -12,6 +12,7 @@ from forgemind_api.auth import SESSION_COOKIE, Principal, principal_for_token
 from forgemind_api.db import run_after_commit
 from forgemind_api.errors import ApiFailure
 from forgemind_api.github import GitHubProvider
+from forgemind_api.queue import Dispatcher
 from forgemind_api.settings import Settings
 
 
@@ -21,6 +22,10 @@ def settings_of(request: Request) -> Settings:
 
 def provider_of(request: Request) -> GitHubProvider:
     return request.app.state.github
+
+
+def dispatcher_of(request: Request) -> Dispatcher:
+    return request.app.state.dispatcher
 
 
 def db_of(request: Request) -> Iterator[DbSession]:
@@ -39,6 +44,7 @@ def db_of(request: Request) -> Iterator[DbSession]:
 Db = Annotated[DbSession, Depends(db_of, scope="function")]
 Config = Annotated[Settings, Depends(settings_of)]
 GitHub = Annotated[GitHubProvider, Depends(provider_of)]
+Queue = Annotated[Dispatcher, Depends(dispatcher_of)]
 
 
 def current_principal(request: Request, db: Db) -> Principal:

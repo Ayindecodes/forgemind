@@ -17,6 +17,7 @@ from forgemind_api.errors import ApiFailure, install_error_handlers
 from forgemind_api.github import PERSONAS, GitHubIdentity, RealGitHub, SimulatedGitHub
 from forgemind_api.logging import configure_logging, request_id_var
 from forgemind_api.models import GitHubInstallation, InstallState, Organization, User
+from forgemind_api.queue import make_dispatcher
 from forgemind_api.routes import auth as auth_routes
 from forgemind_api.routes import notifications as notification_routes
 from forgemind_api.routes import organizations as organization_routes
@@ -90,6 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = make_engine(settings.database_url) if settings.database_url else None
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine) if engine else None
+    app.state.dispatcher = make_dispatcher(settings)
     install_error_handlers(app)
 
     if settings.github_provider == "github":
