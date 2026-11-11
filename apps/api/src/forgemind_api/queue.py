@@ -12,7 +12,12 @@ from celery import Celery
 from redis import Redis
 from redis.backoff import NoBackoff
 from redis.retry import Retry
+from sqlalchemy import update
+from sqlalchemy.orm import Session as DbSession
 
+from forgemind_api.auth import now
+from forgemind_api.db import after_commit
+from forgemind_api.models import Run
 from forgemind_api.settings import Settings, SettingsError
 
 log = logging.getLogger("forgemind_api.queue")
@@ -116,3 +121,25 @@ def queue_reachable(redis_url: str) -> bool:
             client.close()
     except Exception:
         return False
+
+
+def mark_undelivered(db: DbSession, run_id: uuid.UUID) -> None:
+    """Records that the run is not on the queue, so the next sweep puts it
+    there instead of waiting out the usual grace."""
+    db.execute(update(Run).where(Run.id == run_id).values(dispatched_at=None))
+
+
+def dispatch_after_commit(db: DbSession, dispatcher: Dispatcher, run: Run) -> None:
+    """Queues `run` once the transaction that created it has committed: a
+    worker must never be handed a run it cannot see yet."""
+    run.dispatched_at = now()
+    run_id = run.id
+    bind = db.get_bind()
+
+    def send() -> None:
+        if dispatcher.dispatch(run_id):
+            return
+        with DbSession(bind) as other, other.begin():
+            mark_undelivered(other, run_id)
+
+    after_commit(db, send)
