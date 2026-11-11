@@ -1,5 +1,7 @@
 """`python -m forgemind_api serve` serves the API; `migrate` brings the database
-to the current schema. Both read their settings from the environment."""
+to the current schema; `worker` executes runs from the queue; `sweeper` looks
+after runs that lost their worker. All read their settings from the
+environment."""
 
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ import uvicorn
 from forgemind_api.db import make_engine, migrate
 from forgemind_api.seed import seed
 from forgemind_api.settings import SettingsError, load_settings
+from forgemind_api.worker import run_sweeper, run_worker
 
 
 def main(argv: list[str]) -> int:
@@ -34,7 +37,13 @@ def main(argv: list[str]) -> int:
             access_log=False,  # the app logs each request itself, with its id
         )
         return 0
-    sys.stderr.write(f"unknown command {command!r}; use serve, migrate or seed\n")
+    if command == "worker":
+        return run_worker(settings)
+    if command == "sweeper":
+        return run_sweeper(settings)
+    sys.stderr.write(
+        f"unknown command {command!r}; use serve, migrate, seed, worker or sweeper\n"
+    )
     return 2
 
 

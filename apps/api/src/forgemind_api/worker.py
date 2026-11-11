@@ -7,19 +7,24 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import socket
 import threading
 import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from types import FrameType
 from typing import Any, Literal
 
+from celery import Celery
+from celery.signals import setup_logging
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import sessionmaker
 
 from forgemind_api.auth import now
+from forgemind_api.db import make_engine, make_session_factory
 from forgemind_api.execution import (
     append_event,
     event_json,
@@ -27,13 +32,19 @@ from forgemind_api.execution import (
     parse_timestamp,
     run_view,
 )
+from forgemind_api.logging import configure_logging
 from forgemind_api.models import Run, Task
 from forgemind_api.pipeline import PIPELINE, StageFailed, Step
 from forgemind_api.queue import (
+    EXECUTE_RUN,
+    QUEUE,
+    CeleryDispatcher,
     Dispatcher,
+    make_celery,
+    make_publisher,
     mark_undelivered,
 )
-from forgemind_api.settings import Settings
+from forgemind_api.settings import Settings, SettingsError
 
 log = logging.getLogger("forgemind_api.worker")
 
@@ -543,3 +554,98 @@ def sweep(
                 mark_undelivered(db, run_id)
     counts["undelivered"] = len(undelivered)
     return counts
+
+
+class ProcessSessions:
+    """A session factory per process: a pool worker is a fork, and a database
+    connection must not be shared across one."""
+
+    def __init__(self, database_url: str) -> None:
+        self._database_url = database_url
+        self._pid: int | None = None
+        self._sessions: Sessions | None = None
+
+    def __call__(self) -> Sessions:
+        if self._sessions is None or self._pid != os.getpid():
+            self._sessions = make_session_factory(make_engine(self._database_url))
+            self._pid = os.getpid()
+        return self._sessions
+
+
+def _database_url(settings: Settings, purpose: str) -> str:
+    if settings.database_url is None:
+        raise SettingsError(f"FORGEMIND_DATABASE_URL is required to {purpose}")
+    return settings.database_url
+
+
+def build_worker(settings: Settings, pipeline: Sequence[Step] = PIPELINE) -> Celery:
+    """The Celery application with the task a worker executes."""
+    sessions = ProcessSessions(_database_url(settings, "run a worker"))
+    celery = make_celery(settings)
+
+    @celery.task(name=EXECUTE_RUN)
+    def execute(run_id: str) -> str:  # pyright: ignore[reportUnusedFunction]
+        verdict = execute_run(sessions(), uuid.UUID(run_id), settings, pipeline)
+        log.info("delivery handled", extra={"run_id": run_id, "verdict": verdict})
+        return verdict
+
+    return celery
+
+
+def run_worker(settings: Settings, pipeline: Sequence[Step] = PIPELINE) -> int:
+    """Consumes the queue until told to stop."""
+    celery = build_worker(settings, pipeline)
+
+    def keep_json_logs(**_: Any) -> None:
+        configure_logging(settings.log_level)
+
+    # Connected, this stops Celery from installing its own log format.
+    setup_logging.connect(keep_json_logs, weak=False)
+    celery.worker_main(
+        [
+            "--quiet",  # no banner: this process's output is JSON lines
+            "worker",
+            "--queues",
+            QUEUE,
+            "--concurrency",
+            str(settings.worker_concurrency),
+            "--loglevel",
+            settings.log_level,
+            "--without-gossip",
+            "--without-mingle",
+        ]
+    )
+    return 0
+
+
+def run_sweeper(settings: Settings, stop: threading.Event | None = None) -> int:
+    """Sweeps on a timer until told to stop. Its own process, so recovery
+    never waits behind the runs the workers are busy with."""
+    configure_logging(settings.log_level)
+    engine = make_engine(_database_url(settings, "run the sweeper"))
+    sessions = make_session_factory(engine)
+    celery = make_publisher(settings)
+    dispatcher = CeleryDispatcher(celery)
+    stopping = stop or threading.Event()
+    if stop is None:
+
+        def ask_to_stop(_signal: int, _frame: FrameType | None) -> None:
+            stopping.set()
+
+        signal.signal(signal.SIGTERM, ask_to_stop)
+        signal.signal(signal.SIGINT, ask_to_stop)
+    log.info("sweeper started", extra={"every": settings.worker_sweep_seconds})
+    try:
+        while not stopping.is_set():
+            try:
+                counts = sweep(sessions, settings, dispatcher)
+                if any(counts.values()):
+                    log.info("swept", extra=counts)
+            except SQLAlchemyError:
+                log.warning("sweep failed; trying again", exc_info=True)
+            stopping.wait(settings.worker_sweep_seconds)
+    finally:
+        celery.close()
+        engine.dispose()
+    log.info("sweeper stopped")
+    return 0
