@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import sessionmaker
@@ -29,6 +29,10 @@ from forgemind_api.execution import (
 )
 from forgemind_api.models import Run, Task
 from forgemind_api.pipeline import PIPELINE, StageFailed, Step
+from forgemind_api.queue import (
+    Dispatcher,
+    mark_undelivered,
+)
 from forgemind_api.settings import Settings
 
 log = logging.getLogger("forgemind_api.worker")
@@ -475,3 +479,67 @@ def execute_run(
         # another attempt to continue.
         heartbeat.stop()
         release(sessions, run_id, holder, unfinished=not settled)
+
+
+def sweep(
+    sessions: Sessions,
+    settings: Settings,
+    dispatcher: Dispatcher,
+    at: datetime | None = None,
+) -> dict[str, int]:
+    """Looks after runs nobody is looking after. One whose worker went quiet
+    is queued again, or ended if it may not be picked up again; one that never
+    reached a worker is queued; one that has outrun its time budget is ended.
+    Returns how many of each, and how many the queue would not take."""
+    stamp = at or now()
+    grace = timedelta(seconds=settings.worker_stale_seconds)
+    patience = stamp - timedelta(seconds=settings.worker_redispatch_seconds)
+    budget = func.make_interval(0, 0, 0, 0, 0, Task.budget_minutes)
+    counts = {"recovered": 0, "stopped": 0, "queued": 0, "undelivered": 0}
+    wanted: list[uuid.UUID] = []
+    with sessions() as db, db.begin():
+        candidates = db.scalars(
+            select(Run)
+            .join(Task, Task.id == Run.task_id)
+            .where(
+                Run.status.in_(("queued", "running")),
+                or_(
+                    Run.worker_id.is_(None),
+                    Run.heartbeat_at.is_(None),
+                    Run.heartbeat_at <= stamp - grace,
+                    Run.started_at + budget <= stamp - grace,
+                ),
+            )
+            .order_by(Run.created_at)
+            .with_for_update(skip_locked=True, of=Run)
+        ).all()
+        for run in candidates:
+            if lease_is_live(run, stamp, settings):
+                # Its worker is alive and has run past the time budget
+                # without stopping itself: the run is ended for it.
+                if give_up(db, run, stamp, settings):
+                    counts["stopped"] += 1
+                continue
+            abandoned = run.worker_id is not None
+            if abandoned:
+                log.warning(
+                    "run lost its worker",
+                    extra={"run_id": str(run.id), "worker_id": run.worker_id},
+                )
+                run.worker_id = None
+                run.heartbeat_at = None
+            elif run.dispatched_at is not None and run.dispatched_at > patience:
+                continue  # queued recently enough; a worker may yet take it
+            if give_up(db, run, stamp, settings):
+                counts["stopped"] += 1
+                continue
+            run.dispatched_at = stamp
+            wanted.append(run.id)
+            counts["recovered" if abandoned else "queued"] += 1
+    undelivered = [run_id for run_id in wanted if not dispatcher.dispatch(run_id)]
+    if undelivered:
+        with sessions() as db, db.begin():
+            for run_id in undelivered:
+                mark_undelivered(db, run_id)
+    counts["undelivered"] = len(undelivered)
+    return counts
