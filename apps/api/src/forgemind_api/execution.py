@@ -110,6 +110,11 @@ def append_event(
     db.flush()
     state = reduce_run(run_view(run), event_json(event))
     sync_run_columns(run, state)
+    if run.status != "running":
+        # Nobody is executing a run that is not running: the lease ends in
+        # the same transaction as the run does.
+        run.worker_id = None
+        run.heartbeat_at = None
     sync_task(db, run, stamp)
     db.flush()
     if event_type == "approval.requested":
