@@ -17,7 +17,7 @@ from forgemind_api.errors import ApiFailure, install_error_handlers
 from forgemind_api.github import PERSONAS, GitHubIdentity, RealGitHub, SimulatedGitHub
 from forgemind_api.logging import configure_logging, request_id_var
 from forgemind_api.models import GitHubInstallation, InstallState, Organization, User
-from forgemind_api.queue import make_dispatcher
+from forgemind_api.queue import make_dispatcher, queue_reachable
 from forgemind_api.routes import auth as auth_routes
 from forgemind_api.routes import notifications as notification_routes
 from forgemind_api.routes import organizations as organization_routes
@@ -151,6 +151,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         checks: dict[str, Literal["ok", "unreachable"]] = {}
         if engine is not None:
             checks["database"] = "ok" if database_reachable(engine) else "unreachable"
+        if settings.redis_url is not None:
+            reachable = queue_reachable(settings.redis_url)
+            checks["queue"] = "ok" if reachable else "unreachable"
         degraded = "unreachable" in checks.values()
         if degraded:
             response.status_code = 503
