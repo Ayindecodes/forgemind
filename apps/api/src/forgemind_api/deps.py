@@ -9,6 +9,7 @@ from fastapi import Depends, Request
 from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api.auth import SESSION_COOKIE, Principal, principal_for_token
+from forgemind_api.db import run_after_commit
 from forgemind_api.errors import ApiFailure
 from forgemind_api.github import GitHubProvider
 from forgemind_api.settings import Settings
@@ -26,11 +27,16 @@ def db_of(request: Request) -> Iterator[DbSession]:
     factory = request.app.state.session_factory
     if factory is None:
         raise ApiFailure("internal", "This service has no database configured")
-    with factory() as db, db.begin():
-        yield db
+    with factory() as db:
+        with db.begin():
+            yield db
+        run_after_commit(db)
 
 
-Db = Annotated[DbSession, Depends(db_of)]
+# Function scope: the transaction commits, and anything waiting on the commit
+# runs, before the response starts. Nobody is told a write happened before it
+# is durable.
+Db = Annotated[DbSession, Depends(db_of, scope="function")]
 Config = Annotated[Settings, Depends(settings_of)]
 GitHub = Annotated[GitHubProvider, Depends(provider_of)]
 

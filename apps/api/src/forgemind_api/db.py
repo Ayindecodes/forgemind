@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from alembic import command
@@ -26,6 +27,21 @@ def make_engine(url: str) -> Engine:
 
 def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(engine, expire_on_commit=False)
+
+
+_AFTER_COMMIT = "after_commit"
+
+
+def after_commit(db: Session, callback: Callable[[], None]) -> None:
+    """Defers `callback` until the transaction `db` is in has committed, for
+    work that must not happen if the transaction does not."""
+    db.info.setdefault(_AFTER_COMMIT, []).append(callback)
+
+
+def run_after_commit(db: Session) -> None:
+    """Runs what was deferred. Call once the transaction has committed."""
+    for callback in db.info.pop(_AFTER_COMMIT, []):
+        callback()
 
 
 def database_reachable(engine: Engine) -> bool:
