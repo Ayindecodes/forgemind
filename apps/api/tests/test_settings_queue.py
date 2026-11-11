@@ -1,6 +1,8 @@
 import pytest
 
-from forgemind_api.settings import SettingsError, load_settings
+from forgemind_api.queue import make_celery
+from forgemind_api.settings import Settings, SettingsError, load_settings
+from forgemind_api.worker import build_worker, run_sweeper
 
 DATABASE = "postgresql+psycopg://a:b@db/c"
 
@@ -73,3 +75,17 @@ def test_retries_and_recovery_are_bounded_by_default() -> None:
     settings = load_settings({})
     assert settings.worker_max_attempts == 3
     assert settings.worker_stale_seconds >= 2 * settings.worker_heartbeat_seconds
+
+
+def test_a_worker_and_a_sweeper_refuse_to_start_without_what_they_need() -> None:
+    with pytest.raises(SettingsError, match="FORGEMIND_DATABASE_URL is required"):
+        build_worker(Settings(redis_url="redis://queue:6379/0"))
+    with pytest.raises(SettingsError, match="FORGEMIND_DATABASE_URL is required"):
+        run_sweeper(Settings(redis_url="redis://queue:6379/0"))
+    without_queue = Settings(environment="test", database_url=DATABASE)
+    with pytest.raises(SettingsError, match="FORGEMIND_REDIS_URL is required"):
+        build_worker(without_queue)
+    with pytest.raises(SettingsError, match="FORGEMIND_REDIS_URL is required"):
+        run_sweeper(without_queue)
+    with pytest.raises(SettingsError, match="FORGEMIND_REDIS_URL is required"):
+        make_celery(without_queue)
