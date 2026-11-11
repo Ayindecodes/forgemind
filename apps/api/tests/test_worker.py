@@ -8,26 +8,39 @@ import logging
 import threading
 import time
 import uuid
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import update
 from sqlalchemy.orm import Session, sessionmaker
 
+from forgemind_api.auth import now
 from forgemind_api.models import Run
 from forgemind_api.pipeline import StageFailed, StepContext
 from forgemind_api.runstate import run_from_events
 from forgemind_api.settings import Settings
 from forgemind_api.worker import (
+    INTERRUPTED,
+    INTERRUPTED_CHECK,
+    RecordingFailed,
     execute_run,
+    sweep,
 )
 from tests.workers import (
+    QUIET,
+    Flaky,
+    Recorder,
     Scripted,
     events_of,
     kinds,
+    lost_worker,
+    passed,
     queued_run,
     run_of,
     says,
     settings_for,
+    stage_of,
+    started,
     task_of,
 )
 
@@ -231,3 +244,204 @@ def test_deliveries_arriving_together_start_the_run_once(
     assert kinds(events).count("run.started") == 1
     assert kinds(events).count("run.finished") == 1
     assert run_of(sessions, run_id).attempts == 1
+
+
+# --- continuing after a lost worker
+
+
+def test_a_run_whose_worker_died_is_continued_from_what_was_recorded(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    lost_worker(
+        sessions,
+        run_id,
+        settings,
+        timedelta(seconds=30),
+        [
+            started("inspection"),
+            passed("inspection", summary="Read 12 files"),
+            started("planning"),
+            ("log", {"level": "info", "text": "half a plan"}),
+        ],
+    )
+    before = events_of(sessions, run_id)
+    inspection = Scripted("inspection", says("Read it all again"))
+    planning = Scripted("planning", says("Three steps"))
+    pipeline = [inspection, planning]
+    assert execute_run(sessions, run_id, settings, pipeline) == "executed"
+    after = events_of(sessions, run_id)
+    # Everything the dead worker recorded is still there, unchanged.
+    assert after[: len(before)] == before
+    assert [event["seq"] for event in after] == list(range(1, len(after) + 1))
+    added = after[len(before) :]
+    assert kinds(added) == [
+        "log",
+        "stage.finished",
+        "stage.started",
+        "log",
+        "stage.finished",
+        "run.finished",
+    ]
+    resumed, closed, again = added[:3]
+    assert resumed["level"] == "warn" and "attempt 2 of 3" in resumed["text"]
+    assert (closed["stage"], closed["attempt"]) == ("planning", 1)
+    assert (closed["status"], closed["failureReason"]) == ("failed", INTERRUPTED)
+    assert (again["stage"], again["attempt"]) == ("planning", 2)
+    # The stage that had finished is not run again; the interrupted one is.
+    assert (inspection.calls, planning.calls) == (0, 1)
+    assert kinds(after).count("run.started") == 1
+    assert len(stage_of(sessions, run_id, "inspection")["attempts"]) == 1
+    assert [
+        attempt["status"]
+        for attempt in stage_of(sessions, run_id, "planning")["attempts"]
+    ] == ["failed", "passed"]
+    assert run_of(sessions, run_id).attempts == 2
+
+
+def test_a_check_the_lost_worker_left_running_is_closed_as_an_error(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    lost_worker(
+        sessions,
+        run_id,
+        settings,
+        timedelta(seconds=30),
+        [
+            started("testing"),
+            (
+                "check.started",
+                {
+                    "checkId": "unit",
+                    "kind": "tests",
+                    "label": "Unit tests",
+                    "command": "pytest",
+                    "required": True,
+                },
+            ),
+        ],
+    )
+    assert execute_run(sessions, run_id, settings) == "executed"
+    events = events_of(sessions, run_id)
+    closed = next(event for event in events if event["type"] == "check.finished")
+    assert (closed["checkId"], closed["status"]) == ("unit", "error")
+    assert closed["summary"] == INTERRUPTED_CHECK and closed["counts"] is None
+    assert closed["durationMs"] >= 29_000
+    run = run_of(sessions, run_id)
+    assert run.state["checks"][0]["status"] == "error"
+    # A check that did not finish verifies nothing.
+    assert run.verification == "unverified"
+
+
+def test_a_run_out_of_time_when_picked_up_again_is_ended_instead(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions, budget={"maxMinutes": 1})
+    lost_worker(
+        sessions, run_id, settings, timedelta(seconds=90), [started("inspection")]
+    )
+    step = Scripted("inspection", says("never reached"))
+    assert execute_run(sessions, run_id, settings, [step]) == "exhausted"
+    events = events_of(sessions, run_id)
+    assert kinds(events) == [
+        "run.started",
+        "stage.started",
+        "stage.finished",
+        "run.finished",
+    ]
+    assert events[2]["failureReason"] == INTERRUPTED
+    assert events[3]["error"] == "Stopped at the time budget of 1 minute."
+    run = run_of(sessions, run_id)
+    assert (run.status, run.outcome) == ("completed", "failed")
+    assert (run.worker_id, run.attempts, step.calls) == (None, 1, 0)
+
+
+def test_a_run_no_worker_could_finish_is_ended_at_the_attempt_limit(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    for attempt, ago in enumerate((30, 20, 10), start=1):
+        lost_worker(
+            sessions,
+            run_id,
+            settings,
+            timedelta(seconds=ago),
+            [started("inspection", attempt)],
+        )
+    step = Scripted("inspection", says("never reached"))
+    assert execute_run(sessions, run_id, settings, [step]) == "exhausted"
+    events = events_of(sessions, run_id)
+    assert events[-1]["type"] == "run.finished"
+    assert (
+        events[-1]["error"]
+        == "No worker finished this run in 3 attempts, so it was stopped."
+    )
+    assert kinds(events).count("run.finished") == 1
+    assert [
+        attempt["status"]
+        for attempt in stage_of(sessions, run_id, "inspection")["attempts"]
+    ] == ["failed", "failed", "failed"]
+    run = run_of(sessions, run_id)
+    assert (run.status, run.outcome, run.attempts) == ("completed", "failed", 3)
+    assert step.calls == 0
+    assert task_of(sessions, run_id).status == "failed"
+
+
+def test_a_worker_that_cannot_record_leaves_the_run_to_be_continued(
+    sessions: Sessions, settings: Settings
+) -> None:
+    flaky = Flaky(**sessions.kw)
+    run_id = queued_run(sessions)
+
+    def lose_the_database(context: StepContext) -> str | None:
+        flaky.broken = True
+        context.emit("log", LINE)
+        return None
+
+    step = Scripted("inspection", lose_the_database)
+    with pytest.raises(RecordingFailed):
+        execute_run(flaky, run_id, settings, [step])
+    flaky.broken = False
+    before = events_of(sessions, run_id)
+    assert kinds(before) == ["run.started", "stage.started"]
+    # It could not even let go of the run, so its lease has to lapse.
+    held = run_of(sessions, run_id)
+    assert held.status == "running" and held.worker_id is not None
+    recorder = Recorder()
+    later = now() + timedelta(seconds=settings.worker_stale_seconds + 1)
+    assert sweep(sessions, settings, recorder, at=later) == QUIET | {"recovered": 1}
+    again = Scripted("inspection", says("Read 12 files"))
+    assert execute_run(sessions, run_id, settings, [again]) == "executed"
+    after = events_of(sessions, run_id)
+    assert after[: len(before)] == before
+    assert [
+        attempt["status"]
+        for attempt in stage_of(sessions, run_id, "inspection")["attempts"]
+    ] == ["failed", "passed"]
+
+
+def test_a_run_left_unfinished_is_queued_again_at_the_next_sweep(
+    sessions: Sessions, settings: Settings
+) -> None:
+    flaky = Flaky(**sessions.kw)
+    recorder = Recorder()
+    run_id = queued_run(sessions, recorder)
+
+    def fail_one_write(context: StepContext) -> str | None:
+        flaky.broken = True
+        try:
+            context.emit("log", LINE)
+        finally:
+            flaky.broken = False
+        return None
+
+    step = Scripted("inspection", fail_one_write)
+    with pytest.raises(RecordingFailed):
+        execute_run(flaky, run_id, settings, [step])
+    # Let go of, and marked as off the queue: no waiting for a message that
+    # was already consumed.
+    left = run_of(sessions, run_id)
+    assert (left.status, left.worker_id, left.dispatched_at) == ("running", None, None)
+    assert sweep(sessions, settings, recorder) == QUIET | {"queued": 1}
+    assert recorder.dispatched == [run_id, run_id]
