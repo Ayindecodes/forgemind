@@ -3,6 +3,7 @@ repeat, and what becomes of a run whose worker is gone."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import threading
@@ -23,6 +24,7 @@ from forgemind_api.worker import (
     INTERRUPTED,
     INTERRUPTED_CHECK,
     RecordingFailed,
+    RunStopped,
     execute_run,
     sweep,
 )
@@ -31,6 +33,7 @@ from tests.workers import (
     Flaky,
     Recorder,
     Scripted,
+    cancel,
     events_of,
     kinds,
     lost_worker,
@@ -445,3 +448,152 @@ def test_a_run_left_unfinished_is_queued_again_at_the_next_sweep(
     assert (left.status, left.worker_id, left.dispatched_at) == ("running", None, None)
     assert sweep(sessions, settings, recorder) == QUIET | {"queued": 1}
     assert recorder.dispatched == [run_id, run_id]
+
+
+# --- stopping a worker that no longer holds the run
+
+
+def test_a_worker_that_lost_the_run_cannot_add_to_its_record(
+    sessions: Sessions, own_database_url: str
+) -> None:
+    # A heartbeat too slow to notice: the write itself has to refuse.
+    settings = settings_for(
+        own_database_url, worker_heartbeat_seconds=20, worker_stale_seconds=40
+    )
+    run_id = queued_run(sessions)
+
+    def lose_it_then_write(context: StepContext) -> str | None:
+        take_from_its_worker(sessions, run_id)
+        context.emit("log", LINE)
+        return "finished anyway"
+
+    step = Scripted("inspection", lose_it_then_write)
+    assert execute_run(sessions, run_id, settings, [step]) == "stopped"
+    assert kinds(events_of(sessions, run_id)) == ["run.started", "stage.started"]
+    # And it does not let go of a lease that is no longer its own.
+    run = run_of(sessions, run_id)
+    assert (run.status, run.worker_id) == ("running", "another-worker")
+
+
+def test_a_step_that_ignores_being_stopped_still_cannot_finish_its_stage(
+    sessions: Sessions, own_database_url: str
+) -> None:
+    settings = settings_for(
+        own_database_url, worker_heartbeat_seconds=20, worker_stale_seconds=40
+    )
+    run_id = queued_run(sessions)
+
+    def carry_on_regardless(context: StepContext) -> str | None:
+        take_from_its_worker(sessions, run_id)
+        with contextlib.suppress(Exception):
+            context.emit("log", LINE)
+        return "finished anyway"
+
+    step = Scripted("inspection", carry_on_regardless)
+    assert execute_run(sessions, run_id, settings, [step]) == "stopped"
+    assert kinds(events_of(sessions, run_id)) == ["run.started", "stage.started"]
+    assert stage_of(sessions, run_id, "inspection")["status"] == "running"
+
+
+def test_a_worker_notices_it_lost_the_run_without_writing_anything(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    noticed: list[str] = []
+
+    def work_without_writing(context: StepContext) -> str | None:
+        take_from_its_worker(sessions, run_id)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                context.check()
+            except RunStopped:
+                noticed.append("stopped")
+                raise
+            time.sleep(0.02)
+        return None
+
+    step = Scripted("inspection", work_without_writing)
+    assert execute_run(sessions, run_id, settings, [step]) == "stopped"
+    assert noticed == ["stopped"]
+
+
+def test_cancelling_a_run_stops_its_worker(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+
+    def cancelled_under_it(context: StepContext) -> str | None:
+        cancel(sessions, run_id)
+        context.emit("log", LINE)
+        return "finished anyway"
+
+    planning = Scripted("planning", says("never reached"))
+    pipeline = [Scripted("inspection", cancelled_under_it), planning]
+    assert execute_run(sessions, run_id, settings, pipeline) == "stopped"
+    events = events_of(sessions, run_id)
+    assert kinds(events) == ["run.started", "stage.started", "run.finished"]
+    assert events[-1]["status"] == "cancelled"
+    run = run_of(sessions, run_id)
+    assert (run.status, run.outcome, run.worker_id) == ("cancelled", None, None)
+    assert task_of(sessions, run_id).status == "cancelled"
+    assert planning.calls == 0
+
+
+def test_a_run_that_ends_is_nobodys_from_that_moment(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    lost_worker(sessions, run_id, settings, timedelta(seconds=0))
+    assert run_of(sessions, run_id).worker_id == "lost-worker"
+    # No worker is left to let go of it: the end of the run does.
+    cancel(sessions, run_id)
+    run = run_of(sessions, run_id)
+    assert (run.status, run.worker_id, run.heartbeat_at) == ("cancelled", None, None)
+
+
+def test_a_step_is_stopped_when_the_time_budget_runs_out(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions, budget={"maxMinutes": 1})
+    # Started 58.5 seconds ago by a worker that is gone: 1.5 seconds remain.
+    lost_worker(sessions, run_id, settings, timedelta(seconds=58.5))
+    left: list[float] = []
+
+    def outlast_the_budget(context: StepContext) -> str | None:
+        left.append(context.remaining_seconds())
+        for _ in range(500):  # ten seconds: far longer than the budget has left
+            context.check()
+            time.sleep(0.02)
+        return "nobody stopped this step"
+
+    step = Scripted("inspection", outlast_the_budget)
+    assert execute_run(sessions, run_id, settings, [step]) == "executed"
+    assert 0 < left[0] <= 1.5
+    events = events_of(sessions, run_id)
+    assert kinds(events[-2:]) == ["stage.finished", "run.finished"]
+    assert events[-2]["status"] == "failed"
+    assert events[-2]["failureReason"] == "Stopped at the run's time budget."
+    assert events[-1]["error"] == "Stopped at the time budget of 1 minute."
+    run = run_of(sessions, run_id)
+    assert (run.status, run.outcome) == ("completed", "failed")
+
+
+def test_a_long_stage_keeps_its_run_while_its_worker_keeps_proving_it_is_there(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    recorder = Recorder()
+    seen: dict[str, object] = {}
+
+    def outlast_the_stale_limit(context: StepContext) -> str | None:
+        time.sleep(settings.worker_stale_seconds * 1.5)
+        seen["sweep"] = sweep(sessions, settings, recorder)
+        seen["delivery"] = execute_run(sessions, run_id, settings)
+        return None
+
+    step = Scripted("inspection", outlast_the_stale_limit)
+    assert execute_run(sessions, run_id, settings, [step]) == "executed"
+    assert seen == {"sweep": QUIET, "delivery": "held"}
+    assert recorder.dispatched == []
+    assert (run_of(sessions, run_id).attempts, step.calls) == (1, 1)
