@@ -26,6 +26,7 @@ from forgemind_api.queue import (
     make_dispatcher,
     make_publisher,
 )
+from forgemind_api.settings import Settings
 from forgemind_api.worker import sweep
 from tests.workers import QUIET, Recorder, queued_messages, run_of, settings_for
 
@@ -196,3 +197,24 @@ def test_a_write_is_committed_before_its_response_starts(
     assert client.post("/tasks", json=body, headers=OWNER).status_code == 201
     # Whoever is told the task exists can read it straight away.
     assert counted == [before + 1]
+
+
+def test_health_reports_the_queue(app: FastAPI) -> None:
+    response = TestClient(app).get("/health")
+    assert response.status_code == 200
+    assert response.json()["checks"] == {"database": "ok", "queue": "ok"}
+
+
+def test_health_degrades_promptly_when_the_queue_cannot_be_reached(
+    own_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=own_database_url, redis_url=UNREACHABLE))
+    try:
+        began = time.monotonic()
+        response = TestClient(app).get("/health")
+        assert time.monotonic() - began < 3
+    finally:
+        app.state.engine.dispose()
+    assert response.status_code == 503
+    assert response.json()["status"] == "degraded"
+    assert response.json()["checks"] == {"database": "ok", "queue": "unreachable"}
