@@ -3,6 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { axeViolations } from './support/axe';
 import { open } from './support/open';
 
+const api = 'http://localhost:4110';
+
 const SIDEBAR_KEY = 'forgemind-sidebar';
 
 const sidebar = (page: Page) =>
@@ -193,13 +195,21 @@ test.describe('responsive layout', () => {
 });
 
 test.describe('top bar', () => {
-  test('shows the organization and the demo data label', async ({ page }) => {
+  test('shows the organization, and the demo data label only for demo data', async ({
+    page,
+  }) => {
     await open(page, '/');
 
     await expect(page.getByTestId('org-trigger')).toHaveText(
       /Ayinde Creations/,
     );
-    await expect(page.getByTestId('data-source')).toHaveText('Demo data');
+    // The API says what its data is; the badge must agree with it.
+    const health = await page.request.get(`${api}/health`);
+    if (health.headers()['x-forgemind-data'] === 'demo') {
+      await expect(page.getByTestId('data-source')).toHaveText('Demo data');
+    } else {
+      await expect(page.getByTestId('data-source')).toHaveCount(0);
+    }
   });
 
   test('shows the repository selector on repository pages only', async ({
