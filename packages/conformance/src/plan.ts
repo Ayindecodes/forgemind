@@ -95,43 +95,8 @@ export const plan: Probe[] = [
     },
   },
   {
-    key: 'task',
-    build: (context) => ({ params: { id: need(context, 'taskId', 'a task') } }),
-  },
-  {
-    key: 'taskRuns',
-    build: (context) => ({ params: { id: need(context, 'taskId', 'a task') } }),
-  },
-  {
     key: 'runs',
     build: () => ({ query: { limit: '50' } }),
-    after: (context, data) => {
-      const items = (data as Page<Run>).items;
-      const first = items[0];
-      if (first) context.runId = first.id;
-      // The stream probe reads one message, so it needs a run with events.
-      const withEvents = items.find((run) => run.lastSeq > 0);
-      if (withEvents) context.streamRunId = withEvents.id;
-    },
-  },
-  {
-    key: 'run',
-    build: (context) => ({ params: { id: need(context, 'runId', 'a run') } }),
-  },
-  {
-    key: 'runEvents',
-    build: (context) => ({
-      params: { id: need(context, 'runId', 'a run') },
-      query: { after: '0' },
-    }),
-  },
-  {
-    key: 'runEventStream',
-    transport: 'sse',
-    build: (context) => ({
-      params: { id: need(context, 'streamRunId', 'a run with events') },
-      query: { after: '0' },
-    }),
   },
   {
     key: 'runDiff',
@@ -185,6 +150,44 @@ export const plan: Probe[] = [
     key: 'cancelTask',
     build: (context) => ({
       params: { id: need(context, 'createdTaskId', 'the created task') },
+    }),
+  },
+  // The task just created is the one every organization has, seeded or not;
+  // cancelling it recorded its first event, so its run streams and ends.
+  {
+    key: 'task',
+    build: (context) => ({
+      params: { id: need(context, 'createdTaskId', 'the created task') },
+    }),
+    after: (context, data) => {
+      context.createdRunId = (data as Task).runId;
+    },
+  },
+  {
+    key: 'taskRuns',
+    build: (context) => ({
+      params: { id: need(context, 'createdTaskId', 'the created task') },
+    }),
+  },
+  {
+    key: 'run',
+    build: (context) => ({
+      params: { id: need(context, 'createdRunId', "the created task's run") },
+    }),
+  },
+  {
+    key: 'runEvents',
+    build: (context) => ({
+      params: { id: need(context, 'createdRunId', "the created task's run") },
+      query: { after: '0' },
+    }),
+  },
+  {
+    key: 'runEventStream',
+    transport: 'sse',
+    build: (context) => ({
+      params: { id: need(context, 'createdRunId', "the created task's run") },
+      query: { after: '0' },
     }),
   },
   {

@@ -12,14 +12,20 @@ describe('the plan', () => {
     );
   });
 
-  it('reads before it writes', () => {
-    const firstWrite = plan.findIndex(
-      (probe) => endpoints[probe.key].method !== 'GET',
-    );
-    const lastRead = plan
-      .map((probe, index) => ({ probe, index }))
-      .filter(({ probe }) => endpoints[probe.key].method === 'GET')
-      .at(-1)!.index;
-    expect(firstWrite).toBeGreaterThan(lastRead);
+  it('reads the seeded data before it changes anything', () => {
+    const index = (key: string) => plan.findIndex((probe) => probe.key === key);
+    for (const read of ['tasks', 'runs', 'repositories', 'members', 'audit']) {
+      expect(index(read)).toBeLessThan(index('createTask'));
+    }
+    // What the created task yields is read after it exists.
+    for (const read of [
+      'task',
+      'taskRuns',
+      'run',
+      'runEvents',
+      'runEventStream',
+    ]) {
+      expect(index(read)).toBeGreaterThan(index('cancelTask'));
+    }
   });
 });
