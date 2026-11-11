@@ -74,6 +74,18 @@ def sync_task(db: DbSession, run: Run, at: datetime) -> None:
     task.updated_at = run.finished_at or at
 
 
+def locked_run(db: DbSession, run_id: uuid.UUID) -> Run | None:
+    """The run as it is now, held until the transaction ends. Whoever decides
+    something from a run's state and then records it reads the run this way,
+    so two writers cannot both act on the same moment."""
+    return db.scalars(
+        select(Run)
+        .where(Run.id == run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+
+
 def append_event(
     db: DbSession,
     run: Run,
@@ -82,7 +94,10 @@ def append_event(
     at: datetime | None = None,
 ) -> ExecutionEvent:
     """Records one thing that happened, folds it into the run, and moves the
-    task and its notifications along. Events are never updated or removed."""
+    task and its notifications along. Events are never updated or removed.
+    The run is locked first, so events are numbered one writer at a time."""
+    db.flush()
+    db.refresh(run, with_for_update=True)
     stamp = at or now()
     event = ExecutionEvent(
         run_id=run.id,
@@ -224,7 +239,8 @@ def cancel_task(db: DbSession, principal: Principal, task_id: str) -> Task:
     organization_id = require_org(principal)
     require_role(principal, ("owner", "admin", "developer"))
     task = task_of(db, organization_id, task_id)
-    run = db.get(Run, task.current_run_id) if task.current_run_id else None
+    # Locked: a worker may be finishing this run at the same moment.
+    run = locked_run(db, task.current_run_id) if task.current_run_id else None
     if run is None or run.status in ("completed", "cancelled"):
         raise ApiFailure("conflict", "The task has already finished")
     append_event(db, run, "run.finished", {"status": "cancelled", "error": None})
