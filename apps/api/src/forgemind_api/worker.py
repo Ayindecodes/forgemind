@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 import os
 import signal
-import socket
 import threading
 import uuid
 from collections.abc import Sequence
@@ -21,7 +20,6 @@ from celery.signals import setup_logging
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session as DbSession
-from sqlalchemy.orm import sessionmaker
 
 from forgemind_api.auth import now
 from forgemind_api.db import make_engine, make_session_factory
@@ -32,6 +30,7 @@ from forgemind_api.execution import (
     parse_timestamp,
     run_view,
 )
+from forgemind_api.leases import Heartbeat, Sessions, new_worker_id
 from forgemind_api.logging import configure_logging
 from forgemind_api.models import Run, Task
 from forgemind_api.pipeline import PIPELINE, StageFailed, Step
@@ -48,7 +47,6 @@ from forgemind_api.settings import Settings, SettingsError
 
 log = logging.getLogger("forgemind_api.worker")
 
-Sessions = sessionmaker[DbSession]
 Recorded = tuple[str, dict[str, Any]]
 
 # What a delivery came to: the run was executed to its end here; it stopped
@@ -72,12 +70,6 @@ class BudgetExhausted(Exception):
 class RecordingFailed(Exception):
     """An event could not be written. The run is left as it is recorded, for
     another attempt to continue."""
-
-
-def new_worker_id() -> str:
-    """Names one execution of one delivery. Never reused, so a lease cannot be
-    mistaken for an earlier one from the same process."""
-    return f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
 
 def budget_error(minutes: int) -> str:
@@ -217,55 +209,25 @@ def claim(
     return "claimed"
 
 
-class Heartbeat:
-    """Proves on a timer that this worker still holds the run, and notices
-    when it no longer does."""
+def run_heartbeat(
+    sessions: Sessions, run_id: uuid.UUID, worker_id: str, seconds: float
+) -> Heartbeat:
+    """Proves on a timer that this worker still holds the run."""
 
-    def __init__(
-        self, sessions: Sessions, run_id: uuid.UUID, worker_id: str, seconds: float
-    ) -> None:
-        self.lost = threading.Event()
-        self._sessions = sessions
-        self._run_id = run_id
-        self._worker_id = worker_id
-        self._seconds = seconds
-        self._done = threading.Event()
-        self._thread = threading.Thread(
-            target=self._beat, name=f"heartbeat-{run_id}", daemon=True
-        )
+    def beat(db: DbSession) -> bool:
+        held = db.execute(
+            update(Run)
+            .where(
+                Run.id == run_id,
+                Run.worker_id == worker_id,
+                Run.status == "running",
+            )
+            .values(heartbeat_at=now())
+            .returning(Run.id)
+        ).first()
+        return held is not None
 
-    def start(self) -> None:
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._done.set()
-        self._thread.join(timeout=self._seconds + 5)
-
-    def _beat(self) -> None:
-        while not self._done.wait(self._seconds):
-            try:
-                with self._sessions() as db, db.begin():
-                    held = db.execute(
-                        update(Run)
-                        .where(
-                            Run.id == self._run_id,
-                            Run.worker_id == self._worker_id,
-                            Run.status == "running",
-                        )
-                        .values(heartbeat_at=now())
-                        .returning(Run.id)
-                    ).first()
-            except SQLAlchemyError:
-                # Keep trying: if this lasts, the lease lapses by itself.
-                log.warning(
-                    "heartbeat not recorded",
-                    extra={"run_id": str(self._run_id)},
-                    exc_info=True,
-                )
-                continue
-            if held is None:
-                self.lost.set()
-                return
+    return Heartbeat(sessions, f"run-{run_id}", seconds, beat)
 
 
 class RunContext:
@@ -469,7 +431,9 @@ def execute_run(
         deadline = (
             run.started_at + timedelta(minutes=minutes) if run.started_at else None
         )
-    heartbeat = Heartbeat(sessions, run_id, holder, settings.worker_heartbeat_seconds)
+    heartbeat = run_heartbeat(
+        sessions, run_id, holder, settings.worker_heartbeat_seconds
+    )
     context = RunContext(sessions, run_id, holder, deadline, minutes, heartbeat.lost)
     heartbeat.start()
     settled = False
