@@ -1,15 +1,23 @@
-"""A known organization, its people and fixed session tokens for development
-and tests. Refuses to run anywhere else. Safe to run again: it updates."""
+"""A known organization, its people, its repositories and fixed session tokens
+for development and tests. Refuses to run anywhere else. Safe to run again:
+it updates.
+
+The repositories are the simulated GitHub's, and what is recorded about them
+is found the way a worker finds it: each is cloned and inspected here."""
 
 from __future__ import annotations
 
+import functools
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session as DbSession
 
+from forgemind_api import workspace
 from forgemind_api.auth import token_hash
-from forgemind_api.github import APP_PERMISSIONS, PERSONAS
+from forgemind_api.github import APP_PERMISSIONS, PERSONAS, SimulatedGitHub
+from forgemind_api.indexing import record_analysis
+from forgemind_api.inspection import Inspection, inspect_tree
 from forgemind_api.models import (
     GitHubInstallation,
     Organization,
@@ -19,6 +27,12 @@ from forgemind_api.models import (
     User,
 )
 from forgemind_api.settings import Settings, SettingsError
+from forgemind_api.workspace import RepositoryUnavailable
+
+# The installation the organization is seeded with, and the simulated GitHub
+# account it is on.
+INSTALLATION = 1001
+ACCOUNT = "forgemind"
 
 PEOPLE: tuple[tuple[str, str, str, int | None, str | None], ...] = (
     # name, email, github login, github id, role in the organization
@@ -29,78 +43,23 @@ PEOPLE: tuple[tuple[str, str, str, int | None, str | None], ...] = (
     ("Sam Rivera", "sam@example.com", "samrivera", 90000005, None),
 )
 
-# The organization's repositories as the dev API seeds them: id, name,
-# private, languages, pushed minutes ago, status, message, commit, analysed
-# minutes ago.
-REPOSITORIES: tuple[
-    tuple[
-        int,
-        str,
-        bool,
-        tuple[tuple[str, float], ...],
-        int,
-        str,
-        str | None,
-        str | None,
-        int | None,
-    ],
-    ...,
-] = (
-    (
-        811001,
-        "forgemind/api",
-        True,
-        (("TypeScript", 0.88), ("SQL", 0.07), ("Shell", 0.05)),
-        30,
-        "connected",
-        None,
-        "a1b2c3d",
-        46,
-    ),
-    (
-        811002,
-        "forgemind/web",
-        False,
-        (("TypeScript", 0.94), ("CSS", 0.06)),
-        90,
-        "connected",
-        None,
-        "b1bb32f",
-        46,
-    ),
-    (
-        811003,
-        "forgemind/workers",
-        True,
-        (("Python", 0.76), ("Dockerfile", 0.14), ("Shell", 0.1)),
-        300,
-        "connected",
-        None,
-        "9e8d7c6",
-        46,
-    ),
+# The organization's repositories, the same ones the dev API seeds: id, name,
+# private, pushed minutes ago, status, message, and whether it has been
+# indexed. What indexing found is not written here: the seed indexes them.
+REPOSITORIES: tuple[tuple[int, str, bool, int, str, str | None, bool], ...] = (
+    (811001, "forgemind/api", True, 30, "connected", None, True),
+    (811002, "forgemind/web", False, 90, "connected", None, True),
+    (811003, "forgemind/workers", True, 300, "connected", None, True),
     (
         811004,
         "acme/payments",
         True,
-        (("Go", 0.81), ("HCL", 0.19)),
         2 * 1440,
         "error",
         "The GitHub App installation was suspended by the organization owner.",
-        "5a4b3c2",
-        3 * 1440,
-    ),
-    (
-        811005,
-        "acme/legacy-portal",
         True,
-        (("PHP", 0.9), ("JavaScript", 0.1)),
-        60 * 1440,
-        "revoked",
-        "Access revoked",
-        None,
-        None,
     ),
+    (811005, "acme/legacy-portal", True, 60 * 1440, "revoked", "Access revoked", False),
 )
 
 # Fixed tokens the interface's tests sign in with. Only their hashes are stored.
@@ -111,6 +70,27 @@ DEV_TOKENS: tuple[tuple[str, str, int], ...] = (
     ("dev-new", "sam@example.com", 365),
     ("dev-expired", "ayindegraphicscreation@gmail.com", -1),
 )
+
+
+@functools.cache
+def indexed(full_name: str, workspace_root: str | None) -> tuple[str, Inspection]:
+    """The commit the simulated repository is at and what inspecting it
+    finds. Cloned and inspected once per process: neither changes."""
+    github = SimulatedGitHub(
+        "", "", lambda installation_id: ACCOUNT, workspace_root=workspace_root
+    )
+    try:
+        with (
+            github.clone_access(INSTALLATION, full_name) as source,
+            workspace.checkout(
+                source, branch="main", root=workspace_root
+            ) as checked_out,
+        ):
+            return checked_out.commit, inspect_tree(checked_out.path)
+    except RepositoryUnavailable as unavailable:
+        raise SettingsError(
+            f"the seed could not index {full_name}: {unavailable.reason}"
+        ) from None
 
 
 def seed(engine: Engine, settings: Settings) -> None:
@@ -158,8 +138,8 @@ def seed(engine: Engine, settings: Settings) -> None:
         if installation is None:
             installation = GitHubInstallation(
                 organization_id=org.id,
-                installation_id=1001,
-                account_login="forgemind",
+                installation_id=INSTALLATION,
+                account_login=ACCOUNT,
                 account_type="organization",
                 repository_selection="selected",
                 permissions=list(APP_PERMISSIONS),
@@ -171,12 +151,10 @@ def seed(engine: Engine, settings: Settings) -> None:
             github_id,
             full_name,
             private,
-            languages,
             pushed,
             status,
             message,
-            commit,
-            analyzed,
+            was_indexed,
         ) in REPOSITORIES:
             repo = db.scalars(
                 select(Repository).where(
@@ -197,17 +175,22 @@ def seed(engine: Engine, settings: Settings) -> None:
                     connected_at=base - timedelta(days=30),
                 )
                 db.add(repo)
+                db.flush()
             repo.status = status
             repo.status_message = message
-            repo.languages = [
-                {"name": name, "share": share} for name, share in languages
-            ]
             repo.pushed_at = base - timedelta(minutes=pushed)
-            repo.last_analyzed_commit = commit
-            repo.last_analyzed_at = (
-                base - timedelta(minutes=analyzed) if analyzed else None
-            )
             repo.revoked_at = base - timedelta(days=5) if status == "revoked" else None
+            repo.index_attempts = 0
+            repo.index_dispatched_at = None
+            repo.index_worker_id = None
+            repo.index_heartbeat_at = None
+            if was_indexed:
+                commit, inspection = indexed(full_name, settings.workspace_root)
+                record_analysis(db, repo, commit, inspection, base)
+            else:
+                repo.languages = []
+                repo.last_analyzed_commit = None
+                repo.last_analyzed_at = None
         for token, email, days in DEV_TOKENS:
             session = db.scalars(
                 select(Session).where(Session.token_hash == token_hash(token))

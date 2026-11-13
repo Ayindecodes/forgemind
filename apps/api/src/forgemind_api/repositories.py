@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
-from typing import Any, cast
+from typing import cast
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session as DbSession
 from forgemind_api.auth import Principal, now
 from forgemind_api.errors import ApiFailure
 from forgemind_api.github import APP_PERMISSIONS, GitHubProvider, GitHubRepo, as_object
+from forgemind_api.indexing import request_indexing
 from forgemind_api.models import (
     GitHubInstallation,
     InstallState,
@@ -25,6 +26,7 @@ from forgemind_api.models import (
     Task,
 )
 from forgemind_api.organizations import audit, require_org, require_role
+from forgemind_api.queue import Dispatcher
 
 STATE_MINUTES = 10
 SUSPENDED = "The GitHub App installation was suspended by the organization owner."
@@ -220,9 +222,13 @@ def connect_repository(
     db: DbSession,
     principal: Principal,
     provider: GitHubProvider,
+    dispatcher: Dispatcher,
     github_id: int,
     full_name: str,
 ) -> Repository:
+    """Connects a repository the organization's installation can see, and
+    asks for it to be indexed. What is stored about it is what GitHub says,
+    not what the request says."""
     organization_id = require_org(principal)
     require_role(principal, ("owner", "admin", "developer"))
     existing = db.scalars(
@@ -232,38 +238,34 @@ def connect_repository(
         )
     ).first()
     if existing is not None and existing.status != "revoked":
-        raise ApiFailure("conflict", f"{full_name} is already connected")
-    source: GitHubRepo | None = None
+        raise ApiFailure("conflict", f"{existing.full_name} is already connected")
     installation = installation_of(db, organization_id)
-    if installation is not None:
-        source = next(
-            (
-                repo
-                for repo in provider.installation_repositories(
-                    installation.installation_id
-                )
-                if repo.github_id == github_id
-            ),
-            None,
-        )
-    languages: list[Any] = (
-        [{"name": name, "share": share} for name, share in source.languages]
-        if source
-        else []
+    if installation is None:
+        raise ApiFailure("conflict", "Install the GitHub App first")
+    source = next(
+        (
+            repo
+            for repo in provider.installation_repositories(installation.installation_id)
+            if repo.github_id == github_id
+        ),
+        None,
     )
+    if source is None:
+        raise ApiFailure(
+            "not_found", "The GitHub App installation cannot see that repository"
+        )
     if existing is None:
         repo = Repository(
             organization_id=organization_id,
-            installation_id=installation.id if installation else None,
+            installation_id=installation.id,
             github_id=github_id,
-            full_name=full_name,
-            private=source.private if source else False,
-            default_branch=source.default_branch if source else "main",
-            url=f"https://github.com/{full_name}",
+            full_name=source.full_name,
+            private=source.private,
+            default_branch=source.default_branch,
+            url=f"https://github.com/{source.full_name}",
             status="analyzing",
-            status_message="Indexing the repository",
-            languages=languages,
-            pushed_at=source.pushed_at if source else now(),
+            languages=[],
+            pushed_at=source.pushed_at,
             connected_at=now(),
         )
         db.add(repo)
@@ -271,16 +273,15 @@ def connect_repository(
         # A revoked connection comes back as the same record, so its history
         # of tasks and findings stays attached.
         repo = existing
-        repo.status = "analyzing"
-        repo.status_message = "Indexing the repository"
         repo.revoked_at = None
         repo.connected_at = now()
-        repo.installation_id = installation.id if installation else None
-        if source is not None:
-            repo.private = source.private
-            repo.default_branch = source.default_branch
-            repo.pushed_at = source.pushed_at
-    db.flush()
+        repo.installation_id = installation.id
+        repo.full_name = source.full_name
+        repo.url = f"https://github.com/{source.full_name}"
+        repo.private = source.private
+        repo.default_branch = source.default_branch
+        repo.pushed_at = source.pushed_at
+    request_indexing(db, repo, dispatcher)
     db.refresh(repo)
     audit(
         db,
@@ -289,7 +290,7 @@ def connect_repository(
         "repository.connected",
         "repository",
         str(repo.id),
-        full_name,
+        repo.full_name,
     )
     return repo
 
@@ -316,7 +317,9 @@ def disconnect_repository(
     return repo
 
 
-def handle_webhook(db: DbSession, event: str, payload: dict[str, object]) -> str:
+def handle_webhook(
+    db: DbSession, dispatcher: Dispatcher, event: str, payload: dict[str, object]
+) -> str:
     """Applies what GitHub says about an installation. Returns what was done."""
     installation_id = as_object(payload.get("installation")).get("id")
     if not isinstance(installation_id, int):
@@ -352,9 +355,11 @@ def handle_webhook(db: DbSession, event: str, payload: dict[str, object]) -> str
         installation.suspended_at = None
         for repo in repos:
             if repo.status == "error" and repo.status_message == SUSPENDED:
-                analysed = repo.last_analyzed_commit is not None
-                repo.status = "connected" if analysed else "analyzing"
-                repo.status_message = None if analysed else "Indexing the repository"
+                if repo.last_analyzed_commit is None:
+                    request_indexing(db, repo, dispatcher)
+                else:
+                    repo.status = "connected"
+                    repo.status_message = None
         return "installation restored"
     if event == "installation_repositories" and action == "removed":
         removed: set[int] = set()

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api import repositories as service
-from forgemind_api.deps import Config, Current, Db, GitHub
+from forgemind_api.deps import Config, Current, Db, GitHub, Queue
 from forgemind_api.errors import ApiFailure
 from forgemind_api.models import GitHubInstallation, Repository
 from forgemind_api.organizations import require_org
@@ -132,10 +132,10 @@ def repositories(
 
 @router.post("/repositories", response_model=RepositoryOut, status_code=201)
 def connect_repository(
-    body: ConnectRepositoryIn, db: Db, current: Current, github: GitHub
+    body: ConnectRepositoryIn, db: Db, current: Current, github: GitHub, queue: Queue
 ) -> RepositoryOut:
     repo = service.connect_repository(
-        db, current, github, body.github_id, body.full_name
+        db, current, github, queue, body.github_id, body.full_name
     )
     return repository_out(db, repo)
 
@@ -156,6 +156,7 @@ async def github_webhook(
     request: Request,
     db: Db,
     settings: Config,
+    queue: Queue,
     x_github_event: Annotated[str, Header()] = "",
     x_hub_signature_256: Annotated[str, Header()] = "",
 ) -> dict[str, str]:
@@ -174,6 +175,6 @@ async def github_webhook(
     if not isinstance(payload, dict):
         raise ApiFailure("invalid", "The payload is not an object")
     outcome = service.handle_webhook(
-        db, x_github_event, cast(dict[str, object], payload)
+        db, queue, x_github_event, cast(dict[str, object], payload)
     )
     return {"result": outcome}

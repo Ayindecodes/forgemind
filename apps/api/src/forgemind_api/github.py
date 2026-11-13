@@ -57,7 +57,6 @@ class GitHubRepo:
     default_branch: str
     description: str | None
     pushed_at: datetime
-    languages: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -386,7 +385,6 @@ class SimulatedAccount:
 def _repo(
     github_id: int,
     full_name: str,
-    languages: tuple[tuple[str, float], ...],
     pushed_minutes_ago: int,
     private: bool = True,
 ) -> GitHubRepo:
@@ -397,7 +395,6 @@ def _repo(
         default_branch="main",
         description=f"{full_name.split('/')[1]} service",
         pushed_at=datetime.now(UTC) - timedelta(minutes=pushed_minutes_ago),
-        languages=languages,
     )
 
 
@@ -409,84 +406,31 @@ PERSONA_ACCOUNTS: dict[str, str] = {
 
 # What each GitHub account can show an installation, keyed by the account's
 # login, the same as the dev API's seed so the interface's tests mean the
-# same thing here.
+# same thing here. What is in each repository is in simulated_repositories.
 SIMULATED_ACCOUNTS: dict[str, SimulatedAccount] = {
     "forgemind": SimulatedAccount(
         login="forgemind",
         account_type="organization",
         repositories=(
-            _repo(
-                811001,
-                "forgemind/api",
-                (("TypeScript", 0.88), ("SQL", 0.07), ("Shell", 0.05)),
-                30,
-            ),
-            _repo(
-                811002,
-                "forgemind/web",
-                (("TypeScript", 0.94), ("CSS", 0.06)),
-                90,
-                private=False,
-            ),
-            _repo(
-                811003,
-                "forgemind/workers",
-                (("Python", 0.76), ("Dockerfile", 0.14), ("Shell", 0.1)),
-                300,
-            ),
-            _repo(811004, "acme/payments", (("Go", 0.81), ("HCL", 0.19)), 2 * 1440),
-            _repo(
-                811005,
-                "acme/legacy-portal",
-                (("PHP", 0.9), ("JavaScript", 0.1)),
-                60 * 1440,
-            ),
-            _repo(
-                811006,
-                "forgemind/docs",
-                (("MDX", 0.9), ("TypeScript", 0.1)),
-                600,
-                private=False,
-            ),
-            _repo(811007, "forgemind/infra", (("HCL", 0.8), ("Shell", 0.2)), 3000),
-            _repo(
-                811008, "forgemind/cli", (("TypeScript", 0.85), ("Shell", 0.15)), 1400
-            ),
+            _repo(811001, "forgemind/api", 30),
+            _repo(811002, "forgemind/web", 90, private=False),
+            _repo(811003, "forgemind/workers", 300),
+            _repo(811004, "acme/payments", 2 * 1440),
+            _repo(811005, "acme/legacy-portal", 60 * 1440),
+            _repo(811006, "forgemind/docs", 600, private=False),
+            _repo(811007, "forgemind/infra", 3000),
+            _repo(811008, "forgemind/cli", 1400),
         ),
     ),
     "samrivera": SimulatedAccount(
         login="samrivera",
         account_type="user",
         repositories=(
-            _repo(
-                920001, "samrivera/notes-api", (("TypeScript", 0.95), ("SQL", 0.05)), 90
-            ),
-            _repo(
-                920002,
-                "samrivera/shop-web",
-                (("TypeScript", 0.8), ("CSS", 0.2)),
-                400,
-                private=False,
-            ),
-            _repo(
-                920003,
-                "samrivera/data-pipeline",
-                (("Python", 0.97), ("Shell", 0.03)),
-                2000,
-            ),
-            _repo(
-                920004,
-                "samrivera/dotfiles",
-                (("Shell", 0.7), ("Lua", 0.3)),
-                9000,
-                private=False,
-            ),
-            _repo(
-                920005,
-                "samrivera/legacy-cms",
-                (("PHP", 0.9), ("JavaScript", 0.1)),
-                30000,
-            ),
+            _repo(920001, "samrivera/notes-api", 90),
+            _repo(920002, "samrivera/shop-web", 400, private=False),
+            _repo(920003, "samrivera/data-pipeline", 2000),
+            _repo(920004, "samrivera/dotfiles", 9000, private=False),
+            _repo(920005, "samrivera/legacy-cms", 30000),
         ),
     ),
 }

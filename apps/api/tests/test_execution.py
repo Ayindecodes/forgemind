@@ -16,6 +16,7 @@ from forgemind_api.models import Run
 from forgemind_api.seed import seed
 from forgemind_api.settings import Settings
 from tests.helpers import newcomer, session_for
+from tests.test_simulated_repositories import API_COMMIT
 
 OWNER = {"cookie": "fm_session=dev-owner"}
 REVIEWER = {"cookie": "fm_session=dev-reviewer"}
@@ -58,7 +59,9 @@ def test_a_task_starts_queued_with_a_run_and_the_default_budget(
     assert task["status"] == "queued"
     assert task["decision"] is None
     assert task["budget"] == {"maxMinutes": 60, "maxRetries": 2, "maxTokens": 400_000}
-    assert task["baseCommit"] == "a1b2c3d"
+    # The commit the repository was indexed at: what the task starts from.
+    assert analysed_repository(client)["fullName"] == "forgemind/api"
+    assert task["baseCommit"] == API_COMMIT
     assert task["runId"]
     run = client.get(f"/runs/{task['runId']}", headers=OWNER).json()
     assert run["status"] == "queued" and run["lastSeq"] == 0

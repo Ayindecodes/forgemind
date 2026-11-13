@@ -6,27 +6,42 @@ import hmac
 import json
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
 from forgemind_api.app import create_app
+from forgemind_api.github import LOCAL_IDS
+from forgemind_api.indexing import INDEXING, index_repository
 from forgemind_api.repositories import INACCESSIBLE, SUSPENDED
 from forgemind_api.seed import seed
 from forgemind_api.settings import Settings
+from tests.gitrepos import ENVIRONMENT, repository
 from tests.helpers import newcomer, session_for
+from tests.test_simulated_repositories import API_COMMIT, FOUND
 
 OWNER = {"cookie": "fm_session=dev-owner"}
 REVIEWER = {"cookie": "fm_session=dev-reviewer"}
 WEB = "http://localhost:3200"
 SECRET = "hook-secret"
+# The seeded organization's repositories, most recently pushed first.
+SEEDED = (
+    "forgemind/api",
+    "forgemind/web",
+    "forgemind/workers",
+    "acme/payments",
+    "acme/legacy-portal",
+)
 
 
 @pytest.fixture(scope="module")
-def client(database_url: str, engine: Engine) -> Iterator[TestClient]:
+def app(database_url: str, engine: Engine) -> Iterator[FastAPI]:
+    """The API with no queue: a repository connected through it waits."""
     settings = Settings(
         environment="test",
         database_url=database_url,
@@ -35,8 +50,13 @@ def client(database_url: str, engine: Engine) -> Iterator[TestClient]:
     )
     seed(engine, settings)
     app = create_app(settings)
-    yield TestClient(app)
+    yield app
     app.state.engine.dispose()
+
+
+@pytest.fixture(scope="module")
+def client(app: FastAPI) -> TestClient:
+    return TestClient(app)
 
 
 def install(client: TestClient, headers: dict[str, str]) -> dict[str, Any]:
@@ -78,21 +98,68 @@ def connect(
     return body
 
 
+def index(app: FastAPI, repository: dict[str, Any]) -> None:
+    """Does what a worker handed the repository does."""
+    done = index_repository(
+        app.state.session_factory,
+        uuid.UUID(repository["id"]),
+        app.state.settings,
+        app.state.github,
+    )
+    assert done == "indexed"
+
+
 def signed(payload: dict[str, Any]) -> tuple[bytes, dict[str, str]]:
     body = json.dumps(payload).encode()
     signature = "sha256=" + hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
     return body, {"x-hub-signature-256": signature, "content-type": "application/json"}
 
 
-def test_a_fresh_process_serves_a_seeded_installation(database_url: str) -> None:
+def test_a_fresh_process_serves_a_seeded_installation(
+    app: FastAPI, database_url: str
+) -> None:
     """A restart must not forget which account an installation belongs to."""
-    app = create_app(Settings(environment="test", database_url=database_url))
+    fresh = create_app(Settings(environment="test", database_url=database_url))
+    assert fresh is not app
     try:
-        response = TestClient(app).get("/github/repositories", headers=OWNER)
+        response = TestClient(fresh).get("/github/repositories", headers=OWNER)
     finally:
-        app.state.engine.dispose()
+        fresh.state.engine.dispose()
     assert response.status_code == 200, response.text
     assert len(response.json()) == 8
+
+
+def test_one_of_this_machines_repositories_is_offered_as_the_others_are(
+    app: FastAPI, database_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A time is told in UTC, whatever the clock of whoever committed last:
+    it is the one form the interface reads."""
+    monkeypatch.setitem(ENVIRONMENT, "GIT_COMMITTER_DATE", "2026-01-01T09:30:00+09:00")
+    repository(tmp_path / "acme" / "abroad", {"a.txt": "a\n"})
+    here = create_app(
+        Settings(
+            environment="test",
+            database_url=database_url,
+            local_repositories=str(tmp_path),
+        )
+    )
+    assert here is not app
+    try:
+        response = TestClient(here).get("/github/repositories", headers=OWNER)
+    finally:
+        here.state.engine.dispose()
+    assert response.status_code == 200, response.text
+    offered = response.json()
+    assert len(offered) == 9
+    assert offered[-1].pop("githubId") >= LOCAL_IDS
+    assert offered[-1] == {
+        "fullName": "acme/abroad",
+        "private": False,
+        "defaultBranch": "main",
+        "description": None,
+        "pushedAt": "2026-01-01T00:30:00Z",
+        "connectedRepositoryId": None,
+    }
 
 
 def test_the_seeded_installation_and_its_permissions(client: TestClient) -> None:
@@ -201,18 +268,14 @@ def test_connected_repositories_are_listed_most_recently_pushed_first(
 ) -> None:
     page = client.get("/repositories", headers=REVIEWER).json()
     names = [r["fullName"] for r in page["items"]]
-    assert names[:4] == [
-        "forgemind/api",
-        "forgemind/web",
-        "forgemind/workers",
-        "acme/payments",
-    ]
-    assert "acme/legacy-portal" in names
+    # The seeded ones, wherever what other tests connected falls among them.
+    assert [name for name in names if name in SEEDED] == list(SEEDED)
     broken = next(r for r in page["items"] if r["fullName"] == "acme/payments")
     assert broken["status"] == "error"
     assert broken["statusMessage"] == SUSPENDED
     api = page["items"][0]
-    assert api["lastAnalyzedCommit"] == "a1b2c3d"
+    assert api["lastAnalyzedCommit"] == API_COMMIT
+    assert api["languages"][0]["name"] == FOUND["forgemind/api"][0]
     assert api["openFindings"] == 0 and api["latestTaskId"] is None
     assert api["url"] == "https://github.com/forgemind/api"
     two = client.get("/repositories", params={"limit": 2}, headers=OWNER).json()
@@ -237,9 +300,11 @@ def test_developers_connect_and_only_managers_revoke(
     assert refused.status_code == 403
     repo = connect(client, developer, 811008, "forgemind/cli")
     assert repo["status"] == "analyzing"
-    assert repo["statusMessage"] == "Indexing the repository"
+    assert repo["statusMessage"] == INDEXING == "Indexing the repository"
     assert repo["private"] is True
-    assert [lang["name"] for lang in repo["languages"]] == ["TypeScript", "Shell"]
+    # Nothing is said of what is in it before it has been read.
+    assert repo["languages"] == []
+    assert repo["lastAnalyzedCommit"] is None and repo["lastAnalyzedAt"] is None
     again = client.post(
         "/repositories",
         json={"githubId": 811008, "fullName": "forgemind/cli"},
@@ -280,6 +345,43 @@ def test_developers_connect_and_only_managers_revoke(
     client.delete(f"/repositories/{repo['id']}", headers=OWNER)
 
 
+def test_only_what_the_installation_sees_is_connected_and_as_github_names_it(
+    client: TestClient,
+) -> None:
+    before = client.get("/repositories", params={"limit": 200}, headers=OWNER).json()
+    # Another account's repository, under a name this installation does see.
+    refused = client.post(
+        "/repositories",
+        json={"githubId": 920001, "fullName": "forgemind/infra"},
+        headers=OWNER,
+    )
+    assert refused.status_code == 404
+    assert refused.json()["error"] == {
+        "code": "not_found",
+        "message": "The GitHub App installation cannot see that repository",
+    }
+    after = client.get("/repositories", params={"limit": 200}, headers=OWNER).json()
+    assert after == before
+    # One it does see, under a name that is not its own.
+    repo = connect(client, OWNER, 811007, "somebody/elses")
+    assert repo["fullName"] == "forgemind/infra"
+    assert repo["url"] == "https://github.com/forgemind/infra"
+    assert repo["private"] is True and repo["defaultBranch"] == "main"
+    client.delete(f"/repositories/{repo['id']}", headers=OWNER)
+
+
+def test_connecting_needs_the_app_installed(client: TestClient, engine: Engine) -> None:
+    riley = newcomer(engine, "Riley Chen", github_login="samrivera")
+    client.post("/organization", json={"name": "No App Yet"}, headers=riley)
+    refused = client.post(
+        "/repositories",
+        json={"githubId": 920001, "fullName": "samrivera/notes-api"},
+        headers=riley,
+    )
+    assert refused.status_code == 409
+    assert refused.json()["error"]["message"] == "Install the GitHub App first"
+
+
 def test_webhooks_must_be_signed_by_github(client: TestClient) -> None:
     body, headers = signed({"action": "suspend", "installation": {"id": 1001}})
     forged = client.post(
@@ -303,13 +405,15 @@ def test_webhooks_must_be_signed_by_github(client: TestClient) -> None:
 
 
 def test_suspension_and_removal_from_github_reach_the_repositories(
-    client: TestClient, engine: Engine
+    app: FastAPI, client: TestClient, engine: Engine
 ) -> None:
     riley = newcomer(engine, "Riley Chen", github_login="samrivera")
     client.post("/organization", json={"name": "Chen Works"}, headers=riley)
     installation = install(client, riley)
     notes = connect(client, riley, 920001, "samrivera/notes-api")
     shop = connect(client, riley, 920002, "samrivera/shop-web")
+    pipeline = connect(client, riley, 920003, "samrivera/data-pipeline")
+    index(app, pipeline)
 
     def post(event: str, payload: dict[str, Any]) -> dict[str, Any]:
         body, headers = signed(payload)
@@ -341,13 +445,17 @@ def test_suspension_and_removal_from_github_reach_the_repositories(
     )
 
     post("installation", {"action": "suspend", "installation": {"id": iid}})
-    suspended = client.get(f"/repositories/{notes['id']}", headers=riley).json()
-    assert suspended["status"] == "error" and suspended["statusMessage"] == SUSPENDED
+    for repo in (notes, pipeline):
+        suspended = client.get(f"/repositories/{repo['id']}", headers=riley).json()
+        assert suspended["status"] == "error"
+        assert suspended["statusMessage"] == SUSPENDED
     post("installation", {"action": "unsuspend", "installation": {"id": iid}})
-    assert (
-        client.get(f"/repositories/{notes['id']}", headers=riley).json()["status"]
-        == "analyzing"
-    )
+    # Never indexed, it waits to be again. Indexed, it is as it was.
+    waiting = client.get(f"/repositories/{notes['id']}", headers=riley).json()
+    assert (waiting["status"], waiting["statusMessage"]) == ("analyzing", INDEXING)
+    restored = client.get(f"/repositories/{pipeline['id']}", headers=riley).json()
+    assert (restored["status"], restored["statusMessage"]) == ("connected", None)
+    assert restored["lastAnalyzedCommit"] is not None
 
     post("installation", {"action": "deleted", "installation": {"id": iid}})
     assert client.get("/github/installation", headers=riley).json() == {

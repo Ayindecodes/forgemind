@@ -19,7 +19,8 @@ from forgemind_api import execution
 from forgemind_api.app import create_app
 from forgemind_api.deps import Current, Db, Queue
 from forgemind_api.errors import ApiFailure
-from forgemind_api.models import Run, Task
+from forgemind_api.indexing import sweep_indexing
+from forgemind_api.models import Repository, Run, Task
 from forgemind_api.queue import (
     EXECUTE_RUN,
     INDEX_REPOSITORY,
@@ -35,6 +36,8 @@ from tests.workers import QUIET, Recorder, queued_messages, run_of, settings_for
 Sessions = sessionmaker[Session]
 
 OWNER = {"cookie": "fm_session=dev-owner"}
+# A repository the seeded installation can see and nobody has connected.
+DOCS = {"githubId": 811006, "fullName": "forgemind/docs"}
 # Nothing listens here, and the refusal is immediate.
 UNREACHABLE = "redis://127.0.0.1:1/0"
 
@@ -191,6 +194,78 @@ def test_a_task_is_still_created_when_the_queue_cannot_be_reached(
     recorder = Recorder()
     assert sweep(sessions, settings, recorder) == QUIET | {"queued": 1}
     assert recorder.dispatched == [run_id]
+
+
+def test_connecting_a_repository_puts_it_on_the_queue_to_be_indexed(
+    app: FastAPI, sessions: Sessions, redis_url: str
+) -> None:
+    created = TestClient(app).post("/repositories", json=DOCS, headers=OWNER)
+    assert created.status_code == 201, created.text
+    assert created.json()["status"] == "analyzing"
+    repository_id = created.json()["id"]
+    assert queued_messages(redis_url) == [(INDEX_REPOSITORY, [repository_id])]
+    with sessions() as db:
+        stored = db.get_one(Repository, uuid.UUID(repository_id))
+        assert stored.index_dispatched_at is not None
+        assert (stored.index_attempts, stored.index_worker_id) == (0, None)
+
+
+def test_a_repository_is_queued_only_once_a_worker_could_read_it(
+    app: FastAPI, sessions: Sessions
+) -> None:
+    visible: list[bool] = []
+
+    class Looking:
+        def dispatch_indexing(self, repository_id: uuid.UUID) -> bool:
+            with sessions() as other:
+                visible.append(other.get(Repository, repository_id) is not None)
+            return True
+
+    app.state.dispatcher = Looking()
+    created = TestClient(app).post("/repositories", json=DOCS, headers=OWNER)
+    assert created.status_code == 201
+    assert visible == [True]
+
+
+def test_a_connection_refused_after_all_queues_nothing(
+    app: FastAPI, sessions: Sessions
+) -> None:
+    recorder = Recorder()
+    app.state.dispatcher = recorder
+    client = TestClient(app)
+    # A reviewer may not connect; an owner may not connect what is not there.
+    reviewer = {"cookie": "fm_session=dev-reviewer"}
+    assert client.post("/repositories", json=DOCS, headers=reviewer).status_code == 403
+    unseen = {"githubId": 920001, "fullName": "forgemind/docs"}
+    assert client.post("/repositories", json=unseen, headers=OWNER).status_code == 404
+    assert recorder.indexing == []
+    created = client.post("/repositories", json=DOCS, headers=OWNER)
+    assert recorder.indexing == [uuid.UUID(created.json()["id"])]
+    # Connected already, it is not asked for twice.
+    assert client.post("/repositories", json=DOCS, headers=OWNER).status_code == 409
+    assert len(recorder.indexing) == 1
+
+
+def test_a_repository_is_still_connected_when_the_queue_cannot_be_reached(
+    own_database_url: str, sessions: Sessions
+) -> None:
+    settings = settings_for(own_database_url, redis_url=UNREACHABLE)
+    app = create_app(settings)
+    try:
+        began = time.monotonic()
+        created = TestClient(app).post("/repositories", json=DOCS, headers=OWNER)
+        assert time.monotonic() - began < 5
+    finally:
+        app.state.engine.dispose()
+    assert created.status_code == 201, created.text
+    assert created.json()["status"] == "analyzing"
+    repository_id = uuid.UUID(created.json()["id"])
+    # Recorded as not on the queue, so the next sweep puts it there.
+    with sessions() as db:
+        assert db.get_one(Repository, repository_id).index_dispatched_at is None
+    recorder = Recorder()
+    assert sweep_indexing(sessions, settings, recorder) == QUIET | {"queued": 1}
+    assert recorder.indexing == [repository_id]
 
 
 def test_a_write_is_committed_before_its_response_starts(
