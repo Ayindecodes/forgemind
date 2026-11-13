@@ -76,8 +76,9 @@ services:
       redis:
         condition: service_healthy
 
-  # Executes the runs the API queues. Killed mid-run, it leaves the run to
-  # the sweeper, which hands it to the next worker.
+  # Executes the runs and indexes the repositories the API queues. Killed at
+  # either, it leaves the work to the sweeper, which hands it to the next
+  # worker.
   worker:
     build:
       context: apps/api
@@ -98,8 +99,8 @@ services:
       redis:
         condition: service_healthy
 
-  # Queues again the runs whose worker went quiet or whose message was lost,
-  # and ends the ones that may not be tried again.
+  # Queues again the runs and the repositories whose worker went quiet or
+  # whose message was lost, and ends the ones that may not be tried again.
   sweeper:
     build:
       context: apps/api
