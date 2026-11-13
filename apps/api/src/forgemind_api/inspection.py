@@ -253,6 +253,27 @@ PERIPHERAL = frozenset(
         "tools",
     }
 )
+# Directories that put the software through its paces, and ones that show it
+# off. Nothing in either is where the software starts, and what a manifest
+# among the second kind declares is an example's, not the repository's own.
+TRIALS = frozenset({"test", "tests", "__tests__", "e2e", "spec", "specs"})
+ILLUSTRATIONS = frozenset(
+    {
+        "example",
+        "examples",
+        "sample",
+        "samples",
+        "demo",
+        "demos",
+        "fixture",
+        "fixtures",
+        "testdata",
+        "benchmark",
+        "benchmarks",
+        "bench",
+        "benches",
+    }
+)
 
 MANIFEST_NAMES = frozenset(
     {
@@ -441,6 +462,15 @@ def ancestors(path: str) -> Iterator[str]:
         yield path
 
 
+def set_aside(path: str, names: frozenset[str]) -> bool:
+    """Whether a directory on the way to `path` bears one of `names`, alone
+    or before a dash or an underscore, as `tests-integration` does."""
+    for part in parent(path).lower().split("/"):
+        if part in names or re.split("[-_]", part, maxsplit=1)[0] in names:
+            return True
+    return False
+
+
 def printable(text: str) -> bool:
     """False for a path that holds control or formatting characters, or bytes
     that are not text: it could not be shown or linked to as it is."""
@@ -564,6 +594,8 @@ class Reading:
         self.runnable: list[tuple[str, int | None]] = []
         self.unlocked: list[Unlocked] = []
         self.unreadable: list[tuple[str, str]] = []
+        # Directories nothing starts from.
+        self.aside = TRIALS | ILLUSTRATIONS
 
     def read_all(self) -> None:
         for path in self.manifest_paths():
@@ -621,7 +653,12 @@ class Reading:
                 path,
             )
         )
-        return found[:MAX_MANIFESTS]
+        own = [path for path in found if not set_aside(path, ILLUSTRATIONS)]
+        if found and not own:
+            # Examples are all this repository is: they are read as its own.
+            self.aside = TRIALS
+            own = found
+        return own[:MAX_MANIFESTS]
 
     # - what a manifest adds
 
@@ -645,7 +682,9 @@ class Reading:
             commands.append(command)
 
     def entry(self, path: str | None, kind: str) -> None:
-        if path is not None and self.tree.has(path):
+        if path is None or not self.tree.has(path):
+            return
+        if not set_aside(path, self.aside):
             self.entries.setdefault(path, kind)
 
     def parsed(self, path: str, form: str) -> dict[str, Any] | None:

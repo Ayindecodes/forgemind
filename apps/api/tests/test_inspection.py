@@ -515,6 +515,102 @@ def test_commands_come_from_fixed_forms_and_never_from_the_scripts(
     assert "evil" not in json.dumps(found.data) + found.summary
 
 
+# --- what is set aside
+
+
+def test_tests_and_examples_are_not_where_the_software_starts(
+    tmp_path: Path,
+) -> None:
+    found = inspect(
+        tmp_path,
+        {
+            "pyproject.toml": (
+                "[project]\n"
+                'name = "thing"\n'
+                'dependencies = ["flask>=3"]\n'
+                "[project.scripts]\n"
+                'thing = "thing.cli:main"\n'
+                "[dependency-groups]\n"
+                'dev = ["pytest>=8"]\n'
+            ),
+            "uv.lock": "version = 1\n",
+            "src/thing/cli.py": "def main(): ...\n",
+            # An application the tests serve, and suites that can be run.
+            "tests/test_apps/hello/wsgi.py": "app = None\n",
+            "tests-integration/__main__.py": "print('suite')\n",
+            "TestData/app/__main__.py": "print('data')\n",
+            # An example with a manifest of its own, and none of it locked.
+            "examples/tutorial/pyproject.toml": (
+                '[project]\nname = "tutorial"\ndependencies = ["celery", "pytest"]\n'
+                '[build-system]\nrequires = ["hatchling"]\n'
+            ),
+            "examples/tutorial/tasks.py": "from celery import Celery\n",
+            "examples/tutorial/__main__.py": "print('tutorial')\n",
+            "benches/package.json": package(
+                dependencies={"express": "^5"}, scripts={"test": "x", "build": "y"}
+            ),
+            "benches/server.js": "require('express')();\n",
+        },
+    )
+    assert kinds(found) == {"src/thing/cli.py": "cli"}
+    assert found.data["frameworks"] == ["Flask", "pytest"]
+    assert dependencies(found) == {
+        ("pypi", "flask"): ">=3",
+        ("pypi", "pytest"): ">=8",
+    }
+    assert found.data["testCommands"] == ["uv run pytest"]
+    assert found.data["buildCommands"] == []
+    assert found.data["concerns"] == []
+    assert "Its manifests declare 2 dependencies," in found.summary
+
+
+def test_a_suite_with_a_manifest_of_its_own_is_still_how_to_test(
+    tmp_path: Path,
+) -> None:
+    found = inspect(
+        tmp_path,
+        {
+            "package.json": package(scripts={"build": "tsc"}),
+            "package-lock.json": "{}",
+            "e2e/package.json": package(
+                devDependencies={"@playwright/test": "^1.60.0"},
+                scripts={"test": "playwright test", "start": "node serve.js"},
+                bin="./run.js",
+            ),
+            "e2e/run.js": "#!/usr/bin/env node\n",
+            "e2e/serve.js": "require('http');\n",
+        },
+    )
+    assert found.data["testCommands"] == ["cd e2e && npm test"]
+    assert found.data["frameworks"] == ["Playwright"]
+    assert dependencies(found) == {("npm", "@playwright/test"): "^1.60.0"}
+    # What starts the suite does not start the software.
+    assert kinds(found) == {}
+
+
+def test_a_repository_of_nothing_but_examples_is_read_from_them(
+    tmp_path: Path,
+) -> None:
+    found = inspect(
+        tmp_path,
+        {
+            "README.md": "# Examples\n",
+            "examples/hello/package.json": package(
+                dependencies={"express": "^5.0.0"},
+                scripts={"test": "node --test", "start": "node server.js"},
+            ),
+            "examples/hello/package-lock.json": "{}",
+            "examples/hello/server.js": "require('express')();\n",
+            "examples/hello/test/serve.js": "require('express')();\n",
+            "examples/hello/test/package.json": package(bin="./serve.js"),
+        },
+    )
+    assert found.data["testCommands"] == ["cd examples/hello && npm test"]
+    assert found.data["frameworks"] == ["Express"]
+    # The examples are the software here; their tests are tests all the same.
+    assert kinds(found) == {"examples/hello/server.js": "server"}
+
+
 # --- modules
 
 
