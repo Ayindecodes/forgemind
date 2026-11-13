@@ -3,9 +3,11 @@
 # as separate containers on PostgreSQL and Redis. Then checks, from outside:
 #
 #   1. a task created through the API is executed by the worker;
-#   2. a run whose message the queue lost is put back by the sweeper and
-#      executed once;
-#   3. the worker and the sweeper stop cleanly when asked to.
+#   2. a repository connected through the API is cloned and indexed by the
+#      worker, which keeps nothing of the checkout;
+#   3. a run and an indexing whose messages the queue lost are put back by the
+#      sweeper and done once;
+#   4. the worker and the sweeper stop cleanly when asked to.
 #
 #   scripts/worker-check.sh [TAG]    TAG defaults to forgemind-api:gate
 #
@@ -126,6 +128,34 @@ expect_record() {
     fail "run $run_id ended with: $error"
 }
 
+connect() {
+  api -H 'content-type: application/json' "$base/repositories" \
+    -d "{\"githubId\": $1, \"fullName\": \"$2\"}" | json 'data.id'
+}
+
+repository_status() {
+  api "$base/repositories/$1" | json 'data.status'
+}
+
+repository_indexed() {
+  [[ $(repository_status "$1") == connected ]]
+}
+
+# What indexing leaves behind: the commit that was read, what was found in it,
+# and nothing of the checkout on the worker that made it.
+expect_analysis() {
+  local id=$1 worker=$2 repository commit analysed languages left
+  repository=$(api "$base/repositories/$id")
+  commit=$(json 'data.lastAnalyzedCommit' <<<"$repository")
+  [[ $commit =~ ^[0-9a-f]{40}$ ]] || fail "repository $id was indexed at: $commit"
+  languages=$(json 'data.languages.length' <<<"$repository")
+  [[ $languages -gt 0 ]] || fail "repository $id was indexed with no language found"
+  analysed=$(api "$base/repositories/$id/analysis" | json 'data.commit')
+  [[ $analysed == "$commit" ]] || fail "repository $id is at $commit, its analysis at $analysed"
+  left=$(docker exec "$worker" sh -c 'ls -d /tmp/forgemind-workspace-* 2>/dev/null | wc -l')
+  [[ $left == 0 ]] || fail "$worker kept $left checkouts"
+}
+
 docker run -d --rm --network "$net" --name workercheck-db \
   -e POSTGRES_USER=fm -e POSTGRES_PASSWORD=fm -e POSTGRES_DB=fm postgres:17-alpine >/dev/null
 docker run -d --rm --network "$net" --name workercheck-redis \
@@ -150,22 +180,36 @@ wait_until "the worker to finish run $first" 60 run_finished "$first"
 expect_record "$first"
 echo "run $first: started and ended by the worker"
 
+echo "## a repository is cloned and indexed by the worker"
+docs=$(connect 811006 forgemind/docs)
+wait_until "the worker to index repository $docs" 60 repository_indexed "$docs"
+expect_analysis "$docs" workercheck-worker-1
+echo "repository $docs: indexed at $(api "$base/repositories/$docs" | json 'data.lastAnalyzedCommit')"
+
 echo "## the worker stops when asked to"
 stops_cleanly workercheck-worker-1
 echo "exit 0"
 
-echo "## a run whose message was lost is queued again by the sweeper"
+echo "## what the queue lost is queued again by the sweeper"
 second=$(create_task)
+infra=$(connect 811007 forgemind/infra)
 waiting=$(docker exec workercheck-redis redis-cli llen forgemind)
-[[ $waiting == 1 ]] || fail "expected one message waiting for a worker, found $waiting"
+[[ $waiting == 2 ]] || fail "expected two messages waiting for a worker, found $waiting"
 docker exec workercheck-redis redis-cli del forgemind >/dev/null
 [[ $(run_status "$second") == queued ]] || fail "run $second started with no worker to start it"
+[[ $(repository_status "$infra") == analyzing ]] ||
+  fail "repository $infra was indexed with no worker to index it"
 background workercheck-worker-2 python -m forgemind_api worker
 wait_until "the sweeper to queue run $second again and the worker to finish it" 60 run_finished "$second"
 expect_record "$second"
 docker logs workercheck-sweeper 2>&1 | grep -q '"message": "swept".*"queued": 1' ||
   fail "the sweeper did not report queueing a run"
 echo "run $second: queued again, started and ended once"
+wait_until "the sweeper to queue repository $infra again and the worker to index it" 60 repository_indexed "$infra"
+expect_analysis "$infra" workercheck-worker-2
+docker logs workercheck-sweeper 2>&1 | grep -q '"message": "swept indexing".*"queued": 1' ||
+  fail "the sweeper did not report queueing an indexing"
+echo "repository $infra: queued again and indexed"
 
 echo "## the sweeper stops when asked to"
 stops_cleanly workercheck-sweeper
