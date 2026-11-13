@@ -163,10 +163,16 @@ def create_task(
     repo = repository_of(db, organization_id, repository_id)
     if repo.status == "revoked":
         raise ApiFailure("conflict", f"{repo.full_name} is no longer connected")
-    if repo.last_analyzed_commit is None:
+    if repo.status == "analyzing":
         raise ApiFailure(
             "conflict",
             f"{repo.full_name} is still being indexed; try again once it is connected",
+        )
+    if repo.last_analyzed_commit is None:
+        raise ApiFailure(
+            "conflict",
+            f"{repo.full_name} has not been indexed, so there is no commit to start "
+            "from",
         )
     limits = {**DEFAULT_BUDGET, **(budget or {})}
     task = Task(

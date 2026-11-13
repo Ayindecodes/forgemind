@@ -7,12 +7,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api import execution
 from forgemind_api.app import create_app
-from forgemind_api.models import Run
+from forgemind_api.models import Repository, Run
 from forgemind_api.seed import seed
 from forgemind_api.settings import Settings
 from tests.helpers import newcomer, session_for
@@ -148,6 +148,48 @@ def test_who_may_create_and_on_which_repositories(client: TestClient) -> None:
     assert (
         indexing.status_code == 409
         and "still being indexed" in indexing.json()["error"]["message"]
+    )
+    client.delete(f"/repositories/{connected['id']}", headers=OWNER)
+
+
+def test_a_task_waits_for_the_commit_it_is_to_start_from(
+    client: TestClient, engine: Engine
+) -> None:
+    connected = client.post(
+        "/repositories",
+        json={"githubId": 811007, "fullName": "forgemind/infra"},
+        headers=OWNER,
+    ).json()
+
+    def left(**values: Any) -> str:
+        """What asking for a task says with the repository left like that."""
+        with DbSession(engine) as db, db.begin():
+            db.execute(
+                update(Repository)
+                .where(Repository.id == uuid.UUID(connected["id"]))
+                .values(**values)
+            )
+        refused = client.post(
+            "/tasks",
+            json={
+                "repositoryId": connected["id"],
+                "title": "x",
+                "request": "y",
+                "category": "docs",
+            },
+            headers=OWNER,
+        )
+        assert refused.status_code == 409, refused.text
+        message: str = refused.json()["error"]["message"]
+        return message
+
+    # Indexed before and being indexed again: the commit may be about to change.
+    assert left(last_analyzed_commit="c" * 40) == (
+        "forgemind/infra is still being indexed; try again once it is connected"
+    )
+    # Indexing ended without reading it.
+    assert left(status="error", last_analyzed_commit=None) == (
+        "forgemind/infra has not been indexed, so there is no commit to start from"
     )
     client.delete(f"/repositories/{connected['id']}", headers=OWNER)
 
