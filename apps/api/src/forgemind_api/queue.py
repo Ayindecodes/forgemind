@@ -1,6 +1,7 @@
-"""The queue between the API and its workers. A message only says that a run
-wants a worker; the database decides who gets it. So a message may be lost,
-repeated or late without a run being skipped or executed twice."""
+"""The queue between the API and its workers. A message only says that a run,
+or a repository waiting to be indexed, wants a worker; the database decides
+who gets it. So a message may be lost, repeated or late without anything
+being skipped or done twice."""
 
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ log = logging.getLogger("forgemind_api.queue")
 
 QUEUE = "forgemind"
 EXECUTE_RUN = "forgemind.execute_run"
+INDEX_REPOSITORY = "forgemind.index_repository"
 
 # A caller waits no longer than this for the queue; the sweeper covers a miss.
 CONNECT_SECONDS = 2
@@ -74,9 +76,12 @@ def make_publisher(settings: Settings) -> Celery:
 
 
 class Dispatcher(Protocol):
-    """Puts a run on the queue. True when the queue took it."""
+    """Puts a run, or a repository to index, on the queue. True when the
+    queue took it."""
 
     def dispatch(self, run_id: uuid.UUID) -> bool: ...
+
+    def dispatch_indexing(self, repository_id: uuid.UUID) -> bool: ...
 
 
 class CeleryDispatcher:
@@ -92,11 +97,30 @@ class CeleryDispatcher:
             return False
         return True
 
+    def dispatch_indexing(self, repository_id: uuid.UUID) -> bool:
+        try:
+            self._celery.send_task(
+                INDEX_REPOSITORY, args=[str(repository_id)], retry=False
+            )
+        except Exception:
+            # The repository is recorded as waiting; the sweeper asks again.
+            log.warning(
+                "indexing not queued",
+                extra={"repository_id": str(repository_id)},
+                exc_info=True,
+            )
+            return False
+        return True
+
 
 class NoQueue:
-    """No queue is configured: runs are recorded and wait for one."""
+    """No queue is configured: runs and repositories to index are recorded
+    and wait for one."""
 
     def dispatch(self, run_id: uuid.UUID) -> bool:
+        return False
+
+    def dispatch_indexing(self, repository_id: uuid.UUID) -> bool:
         return False
 
 

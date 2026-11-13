@@ -1,5 +1,6 @@
 """The queue between the API and its workers: what goes on it, when, and what
-happens to a run when the queue cannot be reached."""
+happens to a run, or to a repository waiting to be indexed, when the queue
+cannot be reached."""
 
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from forgemind_api.errors import ApiFailure
 from forgemind_api.models import Run, Task
 from forgemind_api.queue import (
     EXECUTE_RUN,
+    INDEX_REPOSITORY,
     CeleryDispatcher,
     NoQueue,
     make_dispatcher,
@@ -74,13 +76,25 @@ def test_dispatching_puts_one_message_naming_the_run_on_the_queue(
     assert queued_messages(redis_url) == [(EXECUTE_RUN, [str(run_id)])]
 
 
+def test_a_repository_to_index_is_one_message_naming_it(
+    own_database_url: str, redis_url: str
+) -> None:
+    celery = make_publisher(settings_for(own_database_url, redis_url=redis_url))
+    repository_id = uuid.uuid4()
+    assert CeleryDispatcher(celery).dispatch_indexing(repository_id) is True
+    celery.close()
+    assert queued_messages(redis_url) == [(INDEX_REPOSITORY, [str(repository_id)])]
+
+
 def test_a_queue_that_cannot_be_reached_is_reported_promptly_and_not_raised(
     own_database_url: str,
 ) -> None:
     celery = make_publisher(settings_for(own_database_url, redis_url=UNREACHABLE))
-    began = time.monotonic()
-    assert CeleryDispatcher(celery).dispatch(uuid.uuid4()) is False
-    assert time.monotonic() - began < 5
+    dispatcher = CeleryDispatcher(celery)
+    for dispatch in (dispatcher.dispatch, dispatcher.dispatch_indexing):
+        began = time.monotonic()
+        assert dispatch(uuid.uuid4()) is False
+        assert time.monotonic() - began < 5
     celery.close()
 
 
@@ -90,6 +104,7 @@ def test_without_a_queue_runs_are_recorded_and_nothing_is_dispatched(
     dispatcher = make_dispatcher(settings_for(own_database_url))
     assert isinstance(dispatcher, NoQueue)
     assert dispatcher.dispatch(uuid.uuid4()) is False
+    assert dispatcher.dispatch_indexing(uuid.uuid4()) is False
 
 
 def test_creating_a_task_puts_its_run_on_the_queue(

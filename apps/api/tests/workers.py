@@ -121,10 +121,16 @@ class Recorder:
 
     accepts: bool = True
     dispatched: list[uuid.UUID] = field(default_factory=list[uuid.UUID])
+    indexing: list[uuid.UUID] = field(default_factory=list[uuid.UUID])
 
     def dispatch(self, run_id: uuid.UUID) -> bool:
         if self.accepts:
             self.dispatched.append(run_id)
+        return self.accepts
+
+    def dispatch_indexing(self, repository_id: uuid.UUID) -> bool:
+        if self.accepts:
+            self.indexing.append(repository_id)
         return self.accepts
 
 
