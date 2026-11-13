@@ -151,7 +151,8 @@ test.describe('onboarding', () => {
     expect(await axeViolations(page)).toEqual([]);
     await page.getByTestId('open-repository').click();
 
-    await expect(page).toHaveURL(/\/repositories\/repo-\d+$/);
+    // Whatever the service calls it: the dev API counts, the real one does not.
+    await expect(page).toHaveURL(/\/repositories\/[\w-]+$/);
     await expect(
       page.getByText('samrivera/notes-api', { exact: true }).first(),
     ).toBeVisible();
