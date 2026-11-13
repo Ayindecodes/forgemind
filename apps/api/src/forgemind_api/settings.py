@@ -69,6 +69,18 @@ class Settings(BaseModel):
     # run may wait on the queue before it is put there again.
     worker_sweep_seconds: float = Field(default=10, gt=0, le=300)
     worker_redispatch_seconds: float = Field(default=120, gt=0, le=3600)
+    # Where repositories are checked out to be read: a directory of this
+    # service's own. Unset, the machine's temporary directory. A checkout is
+    # removed as soon as it has been read.
+    workspace_root: str | None = None
+    # The longest one checkout may take, and the most it may download or
+    # write, before the repository is refused.
+    indexing_seconds: float = Field(default=300, ge=5, le=3600)
+    workspace_megabytes: int = Field(default=512, ge=1, le=20_000)
+    # A directory of git repositories on this machine, laid out owner/name,
+    # which the simulated GitHub offers beside its own made-up ones. It is
+    # how a real repository is inspected where no GitHub App is registered.
+    local_repositories: str | None = None
 
     @field_validator("web_origin", "otel_endpoint", "api_origin")
     @classmethod
@@ -91,6 +103,13 @@ class Settings(BaseModel):
     def _redis_url(cls, value: str | None) -> str | None:
         if value is not None and not value.startswith(("redis://", "rediss://")):
             raise ValueError("must start with redis:// or rediss://")
+        return value
+
+    @field_validator("workspace_root", "local_repositories")
+    @classmethod
+    def _absolute_directory(cls, value: str | None) -> str | None:
+        if value is not None and not os.path.isabs(value):
+            raise ValueError("must be an absolute path")
         return value
 
     @model_validator(mode="after")
@@ -132,6 +151,11 @@ class Settings(BaseModel):
                 raise ValueError(
                     "the github provider needs "
                     + ", ".join(f"{ENV_PREFIX}{name}" for name in missing)
+                )
+            if self.local_repositories is not None:
+                raise ValueError(
+                    f"{ENV_PREFIX}LOCAL_REPOSITORIES is read by the simulated "
+                    "provider only; the github provider clones from GitHub"
                 )
         return self
 
