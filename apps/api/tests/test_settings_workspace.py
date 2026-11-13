@@ -3,7 +3,8 @@ be, and where this machine's own repositories are offered from."""
 
 import pytest
 
-from forgemind_api.settings import SettingsError, load_settings
+from forgemind_api.github import RealGitHub, SimulatedGitHub, make_provider
+from forgemind_api.settings import Settings, SettingsError, load_settings
 
 GITHUB = {
     "FORGEMIND_GITHUB_PROVIDER": "github",
@@ -72,4 +73,13 @@ def test_this_machines_repositories_are_offered_by_the_simulated_github_alone() 
     assert "the github provider clones from GitHub" in str(refused.value)
     # Where to check out is for either.
     settings = load_settings({**GITHUB, "FORGEMIND_WORKSPACE_ROOT": "/var/workspaces"})
-    assert settings.workspace_root == "/var/workspaces"
+    assert isinstance(make_provider(settings), RealGitHub)
+
+
+def test_the_simulated_github_is_given_both_directories() -> None:
+    github = make_provider(
+        Settings(workspace_root="/var/workspaces", local_repositories="/srv/repos")
+    )
+    assert isinstance(github, SimulatedGitHub)
+    assert github.workspace_root == "/var/workspaces"
+    assert github.local_repositories == "/srv/repos"

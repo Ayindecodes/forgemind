@@ -10,14 +10,19 @@ from typing import Literal
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy import select
 
 from forgemind_api.db import database_reachable, make_engine, make_session_factory
 from forgemind_api.errors import ApiFailure, install_error_handlers
-from forgemind_api.github import PERSONAS, GitHubIdentity, RealGitHub, SimulatedGitHub
+from forgemind_api.github import (
+    PERSONAS,
+    GitHubIdentity,
+    SimulatedGitHub,
+    make_provider,
+)
 from forgemind_api.logging import configure_logging, request_id_var
-from forgemind_api.models import GitHubInstallation, InstallState, Organization, User
+from forgemind_api.models import InstallState, Organization, User
 from forgemind_api.queue import make_dispatcher, queue_reachable
+from forgemind_api.repositories import account_login_of
 from forgemind_api.routes import auth as auth_routes
 from forgemind_api.routes import notifications as notification_routes
 from forgemind_api.routes import organizations as organization_routes
@@ -94,31 +99,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.dispatcher = make_dispatcher(settings)
     install_error_handlers(app)
 
-    if settings.github_provider == "github":
-        app.state.github = RealGitHub(
-            settings.github_client_id or "",
-            settings.github_client_secret or "",
-            app_id=settings.github_app_id or "",
-            private_key=settings.github_app_private_key or "",
-            slug=settings.github_app_slug,
-        )
-    else:
+    def resolve_account(installation_id: int) -> str | None:
+        factory = app.state.session_factory
+        if factory is None:
+            return None
+        with factory() as db:
+            return account_login_of(db, installation_id)
 
-        def resolve_account(installation_id: int) -> str | None:
-            factory = app.state.session_factory
-            if factory is None:
-                return None
-            with factory() as db:
-                return db.scalar(
-                    select(GitHubInstallation.account_login).where(
-                        GitHubInstallation.installation_id == installation_id
-                    )
-                )
-
-        simulated = SimulatedGitHub(
-            settings.api_origin, settings.web_origin, resolve_account
-        )
-        app.state.github = simulated
+    github = make_provider(settings, resolve_account)
+    app.state.github = github
+    if isinstance(github, SimulatedGitHub):
 
         def is_new(persona: GitHubIdentity) -> bool:
             # A persona without an organization goes through onboarding.
@@ -138,7 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     raise ApiFailure("invalid", "Unknown install state")
                 return user.github_login, organization.name
 
-        app.include_router(simulated.router(is_new, resolve_install))
+        app.include_router(github.router(is_new, resolve_install))
 
     app.include_router(auth_routes.router)
     app.include_router(organization_routes.router)

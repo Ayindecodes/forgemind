@@ -42,6 +42,15 @@ def installation_of(
     ).first()
 
 
+def account_login_of(db: DbSession, installation_id: int) -> str | None:
+    """The GitHub account a stored installation belongs to, if it is stored."""
+    return db.scalar(
+        select(GitHubInstallation.account_login).where(
+            GitHubInstallation.installation_id == installation_id
+        )
+    )
+
+
 def start_install(db: DbSession, principal: Principal) -> str:
     organization_id = require_org(principal)
     require_role(principal, ("owner", "admin"))

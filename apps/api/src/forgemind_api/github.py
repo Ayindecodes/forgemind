@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from forgemind_api import simulated_repositories, workspace
 from forgemind_api.errors import ApiFailure
+from forgemind_api.settings import Settings
 from forgemind_api.workspace import CloneSource, RepositoryUnavailable
 
 # Why a repository could not be handed over to be cloned, for people.
@@ -751,6 +752,27 @@ class SimulatedGitHub:
 
 class IsNew(Protocol):
     def __call__(self, persona: GitHubIdentity) -> bool: ...
+
+
+def make_provider(
+    settings: Settings, resolve_account: ResolveAccount | None = None
+) -> RealGitHub | SimulatedGitHub:
+    """The GitHub this configuration talks to."""
+    if settings.github_provider == "github":
+        return RealGitHub(
+            settings.github_client_id or "",
+            settings.github_client_secret or "",
+            app_id=settings.github_app_id or "",
+            private_key=settings.github_app_private_key or "",
+            slug=settings.github_app_slug,
+        )
+    return SimulatedGitHub(
+        settings.api_origin,
+        settings.web_origin,
+        resolve_account,
+        workspace_root=settings.workspace_root,
+        local_repositories=settings.local_repositories,
+    )
 
 
 STYLE = """
