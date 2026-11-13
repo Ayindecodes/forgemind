@@ -54,3 +54,21 @@ export function filterRepositories(
 
 export const brokenConnections = (repositories: readonly Repository[]) =>
   repositories.filter((repo) => repo.status === 'error');
+
+/** A commit as git abbreviates it. Links keep the whole hash. */
+export const shortCommit = (commit: string) => commit.slice(0, 7);
+
+/**
+ * A link to a file, and a line, at one commit. The path is whatever the
+ * repository holds, so each part of it is encoded.
+ */
+export const codeHref = (
+  repository: Pick<Repository, 'url'>,
+  commit: string,
+  path: string,
+  line: number | null,
+) =>
+  `${repository.url}/blob/${commit}/${path
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}${line !== null ? `#L${line}` : ''}`;

@@ -1,7 +1,12 @@
 import type { Repository } from '@forgemind/contract';
 import { describe, expect, it } from 'vitest';
 
-import { brokenConnections, filterRepositories } from './repositories';
+import {
+  brokenConnections,
+  codeHref,
+  filterRepositories,
+  shortCommit,
+} from './repositories';
 
 const repo = (
   fullName: string,
@@ -60,5 +65,41 @@ describe('filterRepositories', () => {
     expect(brokenConnections(all).map(({ id }) => id)).toEqual([
       'acme/payments',
     ]);
+  });
+});
+
+describe('shortCommit', () => {
+  it('abbreviates a full hash the way git does and leaves a short one alone', () => {
+    expect(shortCommit('3636e5e228b4dd45a11806f46d797e2cb3754854')).toBe(
+      '3636e5e',
+    );
+    expect(shortCommit('a1b2c3d')).toBe('a1b2c3d');
+  });
+});
+
+describe('codeHref', () => {
+  const repository = { url: 'https://github.com/forgemind/web' };
+  const commit = '3636e5e228b4dd45a11806f46d797e2cb3754854';
+
+  it('links a file, and a line, at the whole commit', () => {
+    expect(codeHref(repository, commit, 'src/server.ts', null)).toBe(
+      `https://github.com/forgemind/web/blob/${commit}/src/server.ts`,
+    );
+    expect(codeHref(repository, commit, 'package.json', 12)).toBe(
+      `https://github.com/forgemind/web/blob/${commit}/package.json#L12`,
+    );
+  });
+
+  it('encodes what a path may hold without touching its separators', () => {
+    expect(
+      codeHref(repository, commit, 'docs/release notes/v2 #1?.md', 3),
+    ).toBe(
+      `https://github.com/forgemind/web/blob/${commit}/docs/release%20notes/v2%20%231%3F.md#L3`,
+    );
+    expect(
+      codeHref(repository, commit, 'src/app/(auth)/[id]/page.tsx', null),
+    ).toBe(
+      `https://github.com/forgemind/web/blob/${commit}/src/app/(auth)/%5Bid%5D/page.tsx`,
+    );
   });
 });
