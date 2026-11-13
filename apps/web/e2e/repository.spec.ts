@@ -78,6 +78,23 @@ test.describe('the repository detail', () => {
     await expect(page).toHaveURL(new RegExp(`/tasks/${tasks.items[0]?.id}$`));
   });
 
+  test('counts nothing it could not load', async ({ page }) => {
+    await page.route(/\/findings\?/, (route) =>
+      route.fulfill({
+        status: 404,
+        json: { error: { code: 'not_found', message: 'Not Found' } },
+      }),
+    );
+    await page.route(/\/tasks\?/, (route) => route.abort());
+    await open(page, '/repositories/repo-1');
+    const findings = page.getByTestId('repository-findings');
+    await expect(findings).toContainText('Could not load findings.');
+    await expect(findings).not.toContainText('(');
+    const tasks = page.getByTestId('repository-tasks');
+    await expect(tasks).toContainText('Could not load tasks.');
+    await expect(tasks).not.toContainText('(');
+  });
+
   test('says why there is no analysis for a broken connection', async ({
     page,
   }) => {

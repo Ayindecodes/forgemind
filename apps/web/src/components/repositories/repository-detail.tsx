@@ -192,7 +192,11 @@ export function RepositoryDetail({ id }: { id: string }) {
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel
           id="findings"
-          title={`Findings (${findings.data?.items.length ?? 0})`}
+          title={
+            findings.data
+              ? `Findings (${findings.data.items.length})`
+              : 'Findings'
+          }
           testId="repository-findings"
         >
           {findings.isPending ? (
@@ -243,7 +247,11 @@ export function RepositoryDetail({ id }: { id: string }) {
 
         <Panel
           id="tasks"
-          title={`Task history (${tasks.data?.items.length ?? 0})`}
+          title={
+            tasks.data
+              ? `Task history (${tasks.data.items.length})`
+              : 'Task history'
+          }
           testId="repository-tasks"
         >
           {tasks.isPending ? (
