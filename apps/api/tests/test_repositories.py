@@ -1,5 +1,6 @@
 """The GitHub App installation, the repositories it can see, connecting and
-revoking them, webhooks, and one organization never seeing another's."""
+revoking them, what indexing found in them, webhooks, and one organization
+never seeing another's."""
 
 import hashlib
 import hmac
@@ -107,6 +108,20 @@ def index(app: FastAPI, repository: dict[str, Any]) -> None:
         app.state.github,
     )
     assert done == "indexed"
+
+
+def listed(client: TestClient, full_name: str) -> dict[str, Any]:
+    """The organization's repository of that name."""
+    items: list[dict[str, Any]] = client.get(
+        "/repositories", params={"limit": 200}, headers=OWNER
+    ).json()["items"]
+    return next(r for r in items if r["fullName"] == full_name)
+
+
+def analysis_of(
+    client: TestClient, repository: dict[str, Any], headers: dict[str, str]
+) -> Any:
+    return client.get(f"/repositories/{repository['id']}/analysis", headers=headers)
 
 
 def signed(payload: dict[str, Any]) -> tuple[bytes, dict[str, str]]:
@@ -382,6 +397,100 @@ def test_connecting_needs_the_app_installed(client: TestClient, engine: Engine) 
     assert refused.json()["error"]["message"] == "Install the GitHub App first"
 
 
+def test_what_indexing_found_is_served_with_the_commit_it_was_found_at(
+    client: TestClient,
+) -> None:
+    api = listed(client, "forgemind/api")
+    # Any member reads it.
+    response = analysis_of(client, api, REVIEWER)
+    assert response.status_code == 200, response.text
+    analysis = response.json()
+    assert set(analysis) == {
+        "repositoryId",
+        "commit",
+        "analyzedAt",
+        "summary",
+        "frameworks",
+        "entryPoints",
+        "modules",
+        "dependencies",
+        "testCommands",
+        "buildCommands",
+        "documentation",
+        "concerns",
+    }
+    assert analysis["repositoryId"] == api["id"]
+    assert analysis["commit"] == api["lastAnalyzedCommit"] == API_COMMIT
+    assert analysis["analyzedAt"] == api["lastAnalyzedAt"]
+    _, frameworks, entry_points, tests, builds = FOUND["forgemind/api"]
+    assert analysis["frameworks"] == frameworks
+    assert [(e["path"], e["kind"]) for e in analysis["entryPoints"]] == entry_points
+    assert analysis["testCommands"] == tests
+    assert analysis["buildCommands"] == builds
+    assert analysis["modules"] and analysis["dependencies"]
+    assert {d["vulnerable"] for d in analysis["dependencies"]} == {False}
+    assert "nothing in the repository was run" in analysis["summary"]
+
+
+def test_a_repository_in_error_still_says_what_was_found_in_it(
+    client: TestClient,
+) -> None:
+    payments = listed(client, "acme/payments")
+    assert payments["status"] == "error"
+    response = analysis_of(client, payments, OWNER)
+    assert response.status_code == 200
+    assert response.json()["commit"] == payments["lastAnalyzedCommit"]
+    assert response.json()["frameworks"] == FOUND["acme/payments"][1]
+
+
+def test_a_repository_not_indexed_yet_has_no_analysis(
+    app: FastAPI, client: TestClient
+) -> None:
+    never = listed(client, "acme/legacy-portal")
+    assert never["lastAnalyzedCommit"] is None and never["languages"] == []
+    missing = analysis_of(client, never, OWNER)
+    assert missing.status_code == 404
+    assert missing.json()["error"] == {
+        "code": "not_found",
+        "message": "This repository has not been indexed yet",
+    }
+    docs = connect(client, OWNER, 811006, "forgemind/docs")
+    assert docs["status"] == "analyzing"
+    assert analysis_of(client, docs, OWNER).status_code == 404
+    # Indexed, it has one, and says what is in it.
+    index(app, docs)
+    indexed = client.get(f"/repositories/{docs['id']}", headers=OWNER).json()
+    assert indexed["status"] == "connected" and indexed["statusMessage"] is None
+    assert indexed["languages"][0]["name"] == FOUND["forgemind/docs"][0]
+    found = analysis_of(client, docs, OWNER)
+    assert found.status_code == 200
+    assert found.json()["commit"] == indexed["lastAnalyzedCommit"]
+    assert found.json()["analyzedAt"] == indexed["lastAnalyzedAt"]
+    assert found.json()["frameworks"] == FOUND["forgemind/docs"][1]
+    client.delete(f"/repositories/{docs['id']}", headers=OWNER)
+    # Revoked, it is still the organization's record of what was found.
+    assert analysis_of(client, docs, OWNER).status_code == 200
+
+
+def test_an_analysis_is_its_organizations_alone(
+    client: TestClient, engine: Engine
+) -> None:
+    api = listed(client, "forgemind/api")
+    riley = newcomer(engine, "Riley Chen")
+    client.post("/organization", json={"name": "Chen Works"}, headers=riley)
+    theirs = analysis_of(client, api, riley)
+    assert theirs.status_code == 404
+    assert theirs.json()["error"]["message"] == "No such repository"
+    assert client.get(f"/repositories/{api['id']}/analysis").status_code == 401
+    nobody = newcomer(engine, "No Organization")
+    assert analysis_of(client, api, nobody).status_code == 403
+    assert client.get("/repositories/nope/analysis", headers=OWNER).status_code == 404
+    assert (
+        client.get(f"/repositories/{uuid.uuid4()}/analysis", headers=OWNER).status_code
+        == 404
+    )
+
+
 def test_webhooks_must_be_signed_by_github(client: TestClient) -> None:
     body, headers = signed({"action": "suspend", "installation": {"id": 1001}})
     forged = client.post(
@@ -456,6 +565,7 @@ def test_suspension_and_removal_from_github_reach_the_repositories(
     restored = client.get(f"/repositories/{pipeline['id']}", headers=riley).json()
     assert (restored["status"], restored["statusMessage"]) == ("connected", None)
     assert restored["lastAnalyzedCommit"] is not None
+    assert analysis_of(client, pipeline, riley).status_code == 200
 
     post("installation", {"action": "deleted", "installation": {"id": iid}})
     assert client.get("/github/installation", headers=riley).json() == {

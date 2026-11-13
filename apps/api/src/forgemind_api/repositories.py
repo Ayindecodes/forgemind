@@ -22,6 +22,7 @@ from forgemind_api.models import (
     GitHubInstallation,
     InstallState,
     Repository,
+    RepositoryAnalysis,
     SecurityFinding,
     Task,
 )
@@ -216,6 +217,23 @@ def latest_task_id(db: DbSession, repo_id: uuid.UUID) -> uuid.UUID | None:
         .order_by(Task.created_at.desc())
         .limit(1)
     )
+
+
+def analysis_of(db: DbSession, repo: Repository) -> RepositoryAnalysis:
+    """What was found at the commit the repository was last indexed at."""
+    analysis = (
+        db.scalars(
+            select(RepositoryAnalysis).where(
+                RepositoryAnalysis.repository_id == repo.id,
+                RepositoryAnalysis.commit == repo.last_analyzed_commit,
+            )
+        ).first()
+        if repo.last_analyzed_commit is not None
+        else None
+    )
+    if analysis is None:
+        raise ApiFailure("not_found", "This repository has not been indexed yet")
+    return analysis
 
 
 def connect_repository(

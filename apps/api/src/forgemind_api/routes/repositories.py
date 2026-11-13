@@ -26,6 +26,7 @@ from forgemind_api.schemas import (
     LanguageOut,
     OkOut,
     PermissionOut,
+    RepositoryAnalysisOut,
     RepositoryOut,
     RepositoryPageOut,
 )
@@ -143,6 +144,24 @@ def connect_repository(
 @router.get("/repositories/{id}", response_model=RepositoryOut)
 def repository(id: RepositoryId, db: Db, current: Current) -> RepositoryOut:
     return repository_out(db, service.repository_of(db, require_org(current), id))
+
+
+@router.get("/repositories/{id}/analysis", response_model=RepositoryAnalysisOut)
+def repository_analysis(
+    id: RepositoryId, db: Db, current: Current
+) -> RepositoryAnalysisOut:
+    """What indexing found at the commit the repository was last indexed at."""
+    repo = service.repository_of(db, require_org(current), id)
+    analysis = service.analysis_of(db, repo)
+    return RepositoryAnalysisOut.model_validate(
+        {
+            **cast(dict[str, object], analysis.data),
+            "repositoryId": str(repo.id),
+            "commit": analysis.commit,
+            "analyzedAt": analysis.analyzed_at,
+            "summary": analysis.summary,
+        }
+    )
 
 
 @router.delete("/repositories/{id}", response_model=OkOut)

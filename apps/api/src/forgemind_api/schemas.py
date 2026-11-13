@@ -182,6 +182,57 @@ class RepositoryPageOut(Wire):
     next_cursor: str | None
 
 
+class EntryPointOut(Wire):
+    path: str
+    kind: Literal["server", "cli", "web", "worker", "library"]
+
+
+class ModuleOut(Wire):
+    name: str
+    path: str
+    description: str
+    importance: Literal["core", "supporting", "peripheral"]
+
+
+class DependencyOut(Wire):
+    name: str
+    version: str
+    ecosystem: Literal["npm", "pypi", "cargo", "go", "maven", "other"]
+    vulnerable: bool
+    advisory_url: str | None
+
+
+class DocumentOut(Wire):
+    path: str
+    title: str
+
+
+class CodeReferenceOut(Wire):
+    path: str = Field(min_length=1)
+    line: int | None = Field(ge=1)
+
+
+class ConcernOut(Wire):
+    title: str
+    detail: str
+    evidence: list[CodeReferenceOut]
+
+
+class RepositoryAnalysisOut(Wire):
+    repository_id: str
+    commit: str = Field(min_length=1)
+    analyzed_at: datetime
+    summary: str
+    frameworks: list[str]
+    entry_points: list[EntryPointOut]
+    modules: list[ModuleOut]
+    dependencies: list[DependencyOut]
+    test_commands: list[str]
+    build_commands: list[str]
+    documentation: list[DocumentOut]
+    concerns: list[ConcernOut]
+
+
 class ConnectRepositoryIn(Wire):
     github_id: int
     full_name: str = Field(pattern=r"^[^/\s]+/[^/\s]+$")
