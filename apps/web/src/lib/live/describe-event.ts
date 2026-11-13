@@ -1,6 +1,7 @@
 import type { Event, EventType } from '@forgemind/contract';
 
 import { formatDuration } from '@/lib/format';
+import { shortCommit } from '@/lib/repositories';
 import { agentLabels, stageLabels } from '@/lib/run-labels';
 
 /*
@@ -53,7 +54,7 @@ const plural = (count: number, noun: string) =>
 export function describeEvent(event: Event): string {
   switch (event.type) {
     case 'run.started':
-      return `Run started from ${event.baseCommit.slice(0, 7)}${
+      return `Run started from ${shortCommit(event.baseCommit)}${
         event.branch ? ` on ${event.branch}` : ''
       }`;
     case 'stage.started':

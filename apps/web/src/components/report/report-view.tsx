@@ -204,7 +204,7 @@ export function ReportView({ taskId }: { taskId: string }) {
           <Section name="repository" title="Repository and commit">
             <p>
               <span className="font-mono">{data.repositoryFullName}</span> at{' '}
-              <span className="font-mono">{data.commit}</span>
+              <span className="font-mono break-all">{data.commit}</span>
             </p>
           </Section>
           <Section name="investigation" title="Investigation summary">
