@@ -6,13 +6,17 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import hashlib
+import re
 import secrets
+import subprocess
 import time
 from collections.abc import Generator
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html import escape
+from pathlib import Path
 from typing import Literal, Protocol, cast
 from urllib.parse import urlencode
 
@@ -486,6 +490,75 @@ SIMULATED_ACCOUNTS: dict[str, SimulatedAccount] = {
     ),
 }
 
+# Repositories of this machine's get ids from here up, clear of the made-up
+# ones and stable for a name.
+LOCAL_IDS = 1_000_000_000
+LOCAL_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+
+
+def read_git(path: Path, *arguments: str) -> str | None:
+    """Asks git one thing about a repository on this machine, with none of
+    the machine's configuration. None when git cannot answer."""
+    try:
+        done = subprocess.run(
+            ["git", "-c", f"safe.directory={path}", "-C", str(path), *arguments],
+            env={
+                "PATH": "/usr/local/bin:/usr/bin:/bin",
+                "HOME": "/nonexistent",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "LC_ALL": "C",
+            },
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def local_repositories(root: str) -> list[tuple[GitHubRepo, Path]]:
+    """The git repositories under `root`, laid out owner/name or
+    owner/name.git, as GitHub would list them, and where each one is. One
+    with no commit is left out: there would be nothing to read."""
+    found: list[tuple[GitHubRepo, Path]] = []
+    try:
+        owners = sorted(entry for entry in Path(root).iterdir() if entry.is_dir())
+    except OSError:
+        return found
+    for owner in owners:
+        try:
+            paths = sorted(entry for entry in owner.iterdir() if entry.is_dir())
+        except OSError:
+            continue
+        for path in paths:
+            name = path.name.removesuffix(".git")
+            if not LOCAL_NAME.match(owner.name) or not LOCAL_NAME.match(name):
+                continue
+            branch = read_git(path, "symbolic-ref", "--short", "HEAD")
+            pushed = read_git(path, "log", "-1", "--no-show-signature", "--format=%cI")
+            if not branch or not pushed:
+                continue
+            full_name = f"{owner.name}/{name}"
+            digest = hashlib.sha256(full_name.encode()).digest()
+            found.append(
+                (
+                    GitHubRepo(
+                        github_id=LOCAL_IDS + int.from_bytes(digest[:4]) % 10**8,
+                        full_name=full_name,
+                        private=False,
+                        default_branch=branch,
+                        description=None,
+                        pushed_at=parse_time(pushed),
+                    ),
+                    path,
+                )
+            )
+    return found
+
 
 class ResolveInstall(Protocol):
     """Who started an install state and for which organization: (login, name)."""
@@ -508,7 +581,8 @@ def account_for_persona(login: str) -> SimulatedAccount:
 
 class SimulatedGitHub:
     """Pages that look like GitHub's and sign in a chosen persona, and
-    made-up repositories to clone, committed when they are asked for."""
+    repositories to clone: made-up ones, committed when they are asked for,
+    and any of this machine's that the configuration names."""
 
     def __init__(
         self,
@@ -517,10 +591,12 @@ class SimulatedGitHub:
         resolve_account: ResolveAccount | None = None,
         *,
         workspace_root: str | None = None,
+        local_repositories: str | None = None,
     ) -> None:
         self.api_origin = api_origin
         self.web_origin = web_origin
         self.workspace_root = workspace_root
+        self.local_repositories = local_repositories
         self.codes: dict[str, tuple[str, GitHubIdentity]] = {}
         self.installations: dict[int, SimulatedAccount] = {}
         self._next_installation = 7000
@@ -559,19 +635,30 @@ class SimulatedGitHub:
             repository_selection="selected",
         )
 
+    def _local(self) -> list[tuple[GitHubRepo, Path]]:
+        if self.local_repositories is None:
+            return []
+        return local_repositories(self.local_repositories)
+
     def installation_repositories(self, installation_id: int) -> list[GitHubRepo]:
-        return list(self._account(installation_id).repositories)
+        listed = list(self._account(installation_id).repositories)
+        return listed + [repo for repo, _ in self._local()]
 
     @contextlib.contextmanager
     def clone_access(
         self, installation_id: int, full_name: str
     ) -> Generator[CloneSource]:
-        """The repository is committed into a directory of its own for as
-        long as the block lasts."""
+        """A made-up repository is committed into a directory of its own for
+        as long as the block lasts. One of this machine's is read where it
+        is."""
         try:
             account = self._account(installation_id)
         except ApiFailure:
             raise RepositoryUnavailable(NO_ACCESS, permanent=True) from None
+        local = {repo.full_name: path for repo, path in self._local()}
+        if full_name in local:
+            yield CloneSource(url=local[full_name].as_uri())
+            return
         if all(repo.full_name != full_name for repo in account.repositories):
             raise RepositoryUnavailable(NO_ACCESS, permanent=True)
         base = workspace.make_base(self.workspace_root)
@@ -722,10 +809,15 @@ def page(
 
 
 def parse_time(value: object) -> datetime:
-    """GitHub's ISO timestamps; now when absent."""
+    """GitHub's ISO timestamps, and git's, in UTC whatever zone they were
+    written in; now when absent."""
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             pass
+        else:
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=UTC)
+            return parsed.astimezone(UTC)
     return datetime.now(UTC)

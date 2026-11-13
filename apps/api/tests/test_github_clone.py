@@ -10,6 +10,7 @@ import os
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -18,11 +19,13 @@ import pytest
 
 from forgemind_api import simulated_repositories
 from forgemind_api.github import (
+    LOCAL_IDS,
     NO_ACCESS,
     SIMULATED_ACCOUNTS,
     UNREACHABLE,
     RealGitHub,
     SimulatedGitHub,
+    local_repositories,
 )
 from forgemind_api.simulated_repositories import TREES
 from forgemind_api.workspace import (
@@ -35,7 +38,7 @@ from forgemind_api.workspace import (
     make_base,
     remove,
 )
-from tests.gitrepos import GitServer, git, repository, running_under
+from tests.gitrepos import ENVIRONMENT, GitServer, git, repository, running_under
 from tests.test_github_app import PRIVATE, PUBLIC
 
 TOKEN = "ghs_ReadsOneRepositoryAndNothingElse"
@@ -368,12 +371,13 @@ def test_why_github_gave_no_access_decides_whether_to_try_again(
 # --- the simulated GitHub
 
 
-def simulated(root: Path) -> SimulatedGitHub:
+def simulated(root: Path, local: Path | None = None) -> SimulatedGitHub:
     github = SimulatedGitHub(
         "http://api.test",
         "http://web.test",
         lambda installation_id: "forgemind" if installation_id == 1001 else None,
         workspace_root=str(root),
+        local_repositories=None if local is None else str(local),
     )
     return github
 
@@ -460,3 +464,113 @@ def test_a_server_without_git_says_so_for_good(
     ):
         pass
     assert (refused.value.reason, refused.value.permanent) == (NO_GIT, True)
+
+
+# --- this machine's own repositories
+
+
+@pytest.fixture
+def local(tmp_path: Path) -> Path:
+    """A directory laid out the way the configuration asks for."""
+    directory = tmp_path / "local"
+    repository(directory / "acme" / "thing", FILES)
+    repository(directory / "acme" / "old", {"a.txt": "a\n"}, branch="trunk")
+    git(
+        directory / "acme",
+        "clone",
+        "-q",
+        "--mirror",
+        (directory / "acme" / "thing").as_uri(),
+        "mirror.git",
+    )
+    # None of these is a repository with something to read.
+    (directory / "acme" / "empty").mkdir()
+    git(directory / "acme" / "empty", "init", "-q", "-b", "main", ".")
+    (directory / "acme" / "notes").mkdir()
+    (directory / "acme" / "notes" / "todo.txt").write_text("nothing\n")
+    (directory / "acme" / "a file").write_text("not a directory\n")
+    (directory / "README").write_text("not an owner\n")
+    repository(directory / ".hidden" / "thing", FILES)
+    repository(directory / "acme" / "has space", FILES)
+    return directory
+
+
+def test_this_machines_repositories_are_listed_as_github_would(local: Path) -> None:
+    found = local_repositories(str(local))
+    assert [(repo.full_name, path) for repo, path in found] == [
+        ("acme/mirror", local / "acme" / "mirror.git"),
+        ("acme/old", local / "acme" / "old"),
+        ("acme/thing", local / "acme" / "thing"),
+    ]
+    assert [repo.default_branch for repo, _ in found] == ["main", "trunk", "main"]
+    for repo, _ in found:
+        assert repo.github_id >= LOCAL_IDS
+        assert not repo.private
+        # When its last commit was made.
+        assert repo.pushed_at == datetime(2026, 1, 1, tzinfo=UTC)
+    # An id belongs to a name, here and on any other machine.
+    ids = [repo.github_id for repo, _ in found]
+    assert len(set(ids)) == 3
+    assert ids == [repo.github_id for repo, _ in local_repositories(str(local))]
+    assert ids[2] == 1_021_719_411
+
+
+def test_when_one_was_last_committed_to_is_told_in_utc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Whatever the clock of whoever committed: the interface reads one form."""
+    monkeypatch.setitem(ENVIRONMENT, "GIT_COMMITTER_DATE", "2026-01-01T09:30:00+09:00")
+    repository(tmp_path / "acme" / "abroad", FILES)
+    [(repo, _)] = local_repositories(str(tmp_path))
+    assert repo.pushed_at == datetime(2026, 1, 1, 0, 30, tzinfo=UTC)
+    assert repo.pushed_at.utcoffset() == timedelta(0)
+
+
+def test_a_directory_that_is_not_there_lists_nothing(tmp_path: Path) -> None:
+    assert local_repositories(str(tmp_path / "nowhere")) == []
+    (tmp_path / "file").write_text("x")
+    assert local_repositories(str(tmp_path / "file")) == []
+
+
+def test_they_are_offered_beside_the_made_up_ones(root: Path, local: Path) -> None:
+    listed = simulated(root, local).installation_repositories(1001)
+    names = [repo.full_name for repo in listed]
+    made_up = [repo.full_name for repo in SIMULATED_ACCOUNTS["forgemind"].repositories]
+    assert names == [*made_up, "acme/mirror", "acme/old", "acme/thing"]
+    # Without the setting there are only the made-up ones.
+    assert [
+        repo.full_name for repo in simulated(root).installation_repositories(1001)
+    ] == made_up
+
+
+@pytest.mark.parametrize(
+    ("full_name", "directory", "branch"),
+    [
+        ("acme/thing", "thing", "main"),
+        ("acme/mirror", "mirror.git", "main"),
+        ("acme/old", "old", "trunk"),
+    ],
+)
+def test_one_of_this_machines_is_cloned_from_where_it_is(
+    full_name: str, directory: str, branch: str, root: Path, local: Path
+) -> None:
+    where = local / "acme" / directory
+    before = git(where, "rev-parse", "HEAD")
+    kept = sorted(str(path) for path in where.rglob("*"))
+    with simulated(root, local).clone_access(1001, full_name) as source:
+        assert source == CloneSource(where.as_uri())
+        with checkout(source, branch=branch, root=str(root)) as found:
+            assert found.commit == before
+            assert "README.md" in files_of(found.path) or branch == "trunk"
+    # Read, and left exactly as it was.
+    assert git(where, "rev-parse", "HEAD") == before
+    assert sorted(str(path) for path in where.rglob("*")) == kept
+
+
+def test_one_that_is_not_there_is_not_given(root: Path, local: Path) -> None:
+    with (
+        pytest.raises(RepositoryUnavailable) as refused,
+        simulated(root, local).clone_access(1001, "acme/empty"),
+    ):
+        pass
+    assert (refused.value.reason, refused.value.permanent) == (NO_ACCESS, True)
