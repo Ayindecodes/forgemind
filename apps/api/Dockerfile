@@ -9,7 +9,11 @@ RUN uv sync --frozen --no-dev
 
 FROM python:3.13-slim-bookworm
 ARG COMMIT=unknown
-RUN useradd --create-home --uid 10001 forgemind
+# git clones the repositories a worker indexes. Nothing in them is run.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --create-home --uid 10001 forgemind
 WORKDIR /app
 COPY --from=build --chown=forgemind:forgemind /app /app
 USER forgemind
