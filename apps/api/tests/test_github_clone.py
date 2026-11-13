@@ -1,5 +1,6 @@
 """Read access to one repository, for as long as it takes to clone it: as the
-real GitHub gives it, checked against git's own HTTP server."""
+real GitHub gives it, checked against git's own HTTP server, and as the
+simulated GitHub does."""
 
 from __future__ import annotations
 
@@ -15,12 +16,18 @@ import httpx
 import jwt
 import pytest
 
+from forgemind_api import simulated_repositories
 from forgemind_api.github import (
     NO_ACCESS,
+    SIMULATED_ACCOUNTS,
     UNREACHABLE,
     RealGitHub,
+    SimulatedGitHub,
 )
+from forgemind_api.simulated_repositories import TREES
 from forgemind_api.workspace import (
+    NO_GIT,
+    PREFIX,
     CloneSource,
     Git,
     RepositoryUnavailable,
@@ -28,7 +35,7 @@ from forgemind_api.workspace import (
     make_base,
     remove,
 )
-from tests.gitrepos import GitServer, repository, running_under
+from tests.gitrepos import GitServer, git, repository, running_under
 from tests.test_github_app import PRIVATE, PUBLIC
 
 TOKEN = "ghs_ReadsOneRepositoryAndNothingElse"
@@ -356,3 +363,100 @@ def test_why_github_gave_no_access_decides_whether_to_try_again(
     # There was no token to revoke, and none was made up to.
     assert api.revoked == []
     assert len(api.seen) == 1
+
+
+# --- the simulated GitHub
+
+
+def simulated(root: Path) -> SimulatedGitHub:
+    github = SimulatedGitHub(
+        "http://api.test",
+        "http://web.test",
+        lambda installation_id: "forgemind" if installation_id == 1001 else None,
+        workspace_root=str(root),
+    )
+    return github
+
+
+def test_a_made_up_repository_is_committed_for_the_clone_and_removed_after(
+    root: Path,
+) -> None:
+    github = simulated(root)
+    with github.clone_access(1001, "forgemind/docs") as source:
+        assert source.authorization is None
+        [made] = os.listdir(root)
+        assert made.startswith(PREFIX)
+        assert source.url == (root / made / "source").as_uri()
+        with checkout(source, branch="main", root=str(root)) as found:
+            assert files_of(found.path) == TREES["forgemind/docs"]
+            assert found.commit == git(root / made / "source", "rev-parse", "HEAD")
+    # The fixture checks that nothing is left.
+
+
+def test_a_made_up_repository_is_removed_when_the_work_fails(root: Path) -> None:
+    with (
+        pytest.raises(RuntimeError),
+        simulated(root).clone_access(1001, "forgemind/docs"),
+    ):
+        raise RuntimeError("the inspection broke")
+
+
+def test_an_installation_made_in_this_process_needs_no_resolving(root: Path) -> None:
+    github = SimulatedGitHub("", "", workspace_root=str(root))
+    installation = github.issue_installation("samrivera")
+    with (
+        github.clone_access(installation, "samrivera/dotfiles") as source,
+        checkout(source, branch="main", root=str(root)) as found,
+    ):
+        assert files_of(found.path) == TREES["samrivera/dotfiles"]
+
+
+@pytest.mark.parametrize(
+    ("installation", "full_name"),
+    [
+        (1001, "samrivera/dotfiles"),
+        (1001, "forgemind/nothing-like-it"),
+        (1001, "../../etc"),
+        (4242, "forgemind/docs"),
+    ],
+    ids=[
+        "another account's",
+        "one that does not exist",
+        "a path",
+        "an installation nobody made",
+    ],
+)
+def test_the_simulated_github_gives_only_what_the_installation_can_see(
+    installation: int, full_name: str, root: Path
+) -> None:
+    entered = False
+    with (
+        pytest.raises(RepositoryUnavailable) as refused,
+        simulated(root).clone_access(installation, full_name),
+    ):
+        entered = True
+    assert not entered
+    assert (refused.value.reason, refused.value.permanent) == (NO_ACCESS, True)
+
+
+def test_every_repository_it_lists_can_be_cloned() -> None:
+    """Each has files to commit: none is listed that could not be read."""
+    for account in SIMULATED_ACCOUNTS.values():
+        for listed in account.repositories:
+            assert listed.full_name in TREES
+            assert listed.default_branch == "main"
+
+
+def test_a_server_without_git_says_so_for_good(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_git(full_name: str, directory: Path) -> str:
+        raise simulated_repositories.GitMissing("git is needed")
+
+    monkeypatch.setattr(simulated_repositories, "materialise", no_git)
+    with (
+        pytest.raises(RepositoryUnavailable) as refused,
+        simulated(root).clone_access(1001, "forgemind/docs"),
+    ):
+        pass
+    assert (refused.value.reason, refused.value.permanent) == (NO_GIT, True)

@@ -1,5 +1,6 @@
-"""GitHub as the identity provider: the real one, and a simulated one that
-serves look-alike pages for development and tests."""
+"""GitHub as the identity provider and as where repositories come from: the
+real one, and a simulated one that serves look-alike pages and repositories
+of its own for development and tests."""
 
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ import contextlib
 import secrets
 import time
 from collections.abc import Generator
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html import escape
@@ -19,6 +21,7 @@ import jwt
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from forgemind_api import simulated_repositories, workspace
 from forgemind_api.errors import ApiFailure
 from forgemind_api.workspace import CloneSource, RepositoryUnavailable
 
@@ -93,6 +96,12 @@ class GitHubProvider(Protocol):
     def install_url(self, state: str) -> str: ...
     def installation(self, installation_id: int) -> InstallationInfo: ...
     def installation_repositories(self, installation_id: int) -> list[GitHubRepo]: ...
+    def clone_access(
+        self, installation_id: int, full_name: str
+    ) -> AbstractContextManager[CloneSource]:
+        """Where to clone one repository from, for as long as the block lasts.
+        Raises RepositoryUnavailable when the installation cannot read it."""
+        ...
 
 
 class RealGitHub:
@@ -498,16 +507,20 @@ def account_for_persona(login: str) -> SimulatedAccount:
 
 
 class SimulatedGitHub:
-    """Pages that look like GitHub's and sign in a chosen persona."""
+    """Pages that look like GitHub's and sign in a chosen persona, and
+    made-up repositories to clone, committed when they are asked for."""
 
     def __init__(
         self,
         api_origin: str,
         web_origin: str,
         resolve_account: ResolveAccount | None = None,
+        *,
+        workspace_root: str | None = None,
     ) -> None:
         self.api_origin = api_origin
         self.web_origin = web_origin
+        self.workspace_root = workspace_root
         self.codes: dict[str, tuple[str, GitHubIdentity]] = {}
         self.installations: dict[int, SimulatedAccount] = {}
         self._next_installation = 7000
@@ -548,6 +561,28 @@ class SimulatedGitHub:
 
     def installation_repositories(self, installation_id: int) -> list[GitHubRepo]:
         return list(self._account(installation_id).repositories)
+
+    @contextlib.contextmanager
+    def clone_access(
+        self, installation_id: int, full_name: str
+    ) -> Generator[CloneSource]:
+        """The repository is committed into a directory of its own for as
+        long as the block lasts."""
+        try:
+            account = self._account(installation_id)
+        except ApiFailure:
+            raise RepositoryUnavailable(NO_ACCESS, permanent=True) from None
+        if all(repo.full_name != full_name for repo in account.repositories):
+            raise RepositoryUnavailable(NO_ACCESS, permanent=True)
+        base = workspace.make_base(self.workspace_root)
+        try:
+            try:
+                simulated_repositories.materialise(full_name, base / "source")
+            except simulated_repositories.GitMissing:
+                raise RepositoryUnavailable(workspace.NO_GIT, permanent=True) from None
+            yield CloneSource(url=(base / "source").as_uri())
+        finally:
+            workspace.remove(base)
 
     def authorize_url(self, state: str, redirect_uri: str) -> str:
         return f"{self.api_origin}/auth/github/authorize?{urlencode({'state': state})}"
