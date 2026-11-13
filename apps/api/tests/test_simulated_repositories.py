@@ -175,10 +175,13 @@ def test_nothing_of_this_machine_or_account_changes_the_commit(
     repository = tmp_path / "repository"
     assert materialise("forgemind/api", repository) == API_COMMIT
     assert not (tmp_path / "elsewhere.git").exists()
+    # A format of our own: git's ISO one writes UTC as "+00:00" or as "Z",
+    # depending on its version.
+    when = "--date=format:%Y-%m-%dT%H:%M:%S%z"
     assert (
-        git(repository, "log", "-1", "--format=%an <%ae> %aI | %cn <%ce> %cI")
-        == "Simulated GitHub <simulated@forgemind.invalid> 2026-10-01T09:00:00+00:00"
-        " | Simulated GitHub <simulated@forgemind.invalid> 2026-10-01T09:00:00+00:00"
+        git(repository, "log", "-1", when, "--format=%an <%ae> %ad | %cn <%ce> %cd")
+        == "Simulated GitHub <simulated@forgemind.invalid> 2026-10-01T09:00:00+0000"
+        " | Simulated GitHub <simulated@forgemind.invalid> 2026-10-01T09:00:00+0000"
     )
 
 
