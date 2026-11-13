@@ -237,6 +237,26 @@ def test_an_entry_point_is_a_file_of_its_own_package(tmp_path: Path) -> None:
     assert kinds(found) == {}
 
 
+def test_a_package_that_names_no_main_is_loaded_from_its_index(
+    tmp_path: Path,
+) -> None:
+    found = inspect(
+        tmp_path,
+        {
+            "package.json": package(),
+            "index.js": "module.exports = require('./lib/thing');\n",
+            # One nobody can install is not a library, whatever it holds.
+            "apps/site/package.json": package(private=True),
+            "apps/site/index.js": "console.log('site');\n",
+            # Exports are all a package lets in: its index is not among them.
+            "packages/kit/package.json": package(exports={"./feature": "./feature.js"}),
+            "packages/kit/index.js": "module.exports = 1;\n",
+            "packages/kit/feature.js": "module.exports = 2;\n",
+        },
+    )
+    assert kinds(found) == {"index.js": "library"}
+
+
 # --- Python
 
 

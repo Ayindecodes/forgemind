@@ -869,6 +869,10 @@ class Reading:
                 or options.get("default")
                 or options.get("require")
             )
+        named = any(key in data for key in ("main", "module", "exports"))
+        if not named and data.get("private") is not True:
+            # What Node loads from a package that names nothing else.
+            chosen = "index.js"
         if isinstance(chosen, str):
             self.entry(self.node_source(directory, chosen), "library")
 
