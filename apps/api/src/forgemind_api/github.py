@@ -3,8 +3,11 @@ serves look-alike pages for development and tests."""
 
 from __future__ import annotations
 
+import base64
+import contextlib
 import secrets
 import time
+from collections.abc import Generator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html import escape
@@ -17,6 +20,14 @@ from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from forgemind_api.errors import ApiFailure
+from forgemind_api.workspace import CloneSource, RepositoryUnavailable
+
+# Why a repository could not be handed over to be cloned, for people.
+NO_ACCESS = (
+    "GitHub did not give access to this repository. Check that the ForgeMind "
+    "App is still installed and can see it."
+)
+UNREACHABLE = "GitHub could not be reached for access to the repository."
 
 
 @dataclass(frozen=True)
@@ -97,6 +108,7 @@ class RealGitHub:
         private_key: str = "",
         slug: str = "forgemind",
         transport: httpx.BaseTransport | None = None,
+        git_origin: str = "https://github.com",
     ) -> None:
         self.client_id = client_id
         self.client_secret = client_secret
@@ -104,6 +116,8 @@ class RealGitHub:
         self.private_key = private_key.replace("\\n", "\n")
         self.slug = slug
         self.client = httpx.Client(transport=transport, timeout=10)
+        # Where git reaches repositories. GitHub's, except in tests.
+        self.git_origin = git_origin
 
     def install_url(self, state: str) -> str:
         query = urlencode({"state": state})
@@ -193,6 +207,59 @@ class RealGitHub:
                 break
             page += 1
         return repos
+
+    @contextlib.contextmanager
+    def clone_access(
+        self, installation_id: int, full_name: str
+    ) -> Generator[CloneSource]:
+        """Read access to one repository for as long as the block lasts: a
+        token that can read that repository's contents and nothing else,
+        given to git as a header and revoked when the block ends."""
+        token = self._contents_token(installation_id, full_name)
+        basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+        try:
+            yield CloneSource(
+                url=f"{self.git_origin}/{full_name}.git",
+                authorization=f"Basic {basic}",
+            )
+        finally:
+            # It would expire within the hour. This is sooner.
+            with contextlib.suppress(httpx.HTTPError):
+                self.client.delete(
+                    "https://api.github.com/installation/token",
+                    headers={
+                        "authorization": f"Bearer {token}",
+                        "accept": "application/vnd.github+json",
+                    },
+                )
+
+    def _contents_token(self, installation_id: int, full_name: str) -> str:
+        try:
+            granted = self.client.post(
+                f"https://api.github.com/app/installations/{installation_id}/access_tokens",
+                headers=self._app_headers(),
+                json={
+                    "repositories": [full_name.partition("/")[2]],
+                    "permissions": {"contents": "read"},
+                },
+            )
+        except httpx.HTTPError:
+            raise RepositoryUnavailable(UNREACHABLE, permanent=False) from None
+        # GitHub also answers 403 when it is asked too often, which passes.
+        limited = (
+            "retry-after" in granted.headers
+            or granted.headers.get("x-ratelimit-remaining") == "0"
+        )
+        if granted.status_code in (403, 404, 422) and not limited:
+            raise RepositoryUnavailable(NO_ACCESS, permanent=True)
+        try:
+            body: object = granted.json() if granted.is_success else None
+        except ValueError:
+            body = None
+        token = as_object(body).get("token")
+        if not isinstance(token, str) or not token:
+            raise RepositoryUnavailable(UNREACHABLE, permanent=False)
+        return token
 
     def _app_headers(self) -> dict[str, str]:
         return {
