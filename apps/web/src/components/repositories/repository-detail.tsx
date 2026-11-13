@@ -14,6 +14,7 @@ import { EmptyState, ErrorState } from '@/components/ui/states';
 import { Status, type StatusValue } from '@/components/ui/status';
 import { ApiRequestError, request } from '@/lib/api-client';
 import { formatRelative } from '@/lib/format';
+import { codeHref, shortCommit } from '@/lib/repositories';
 
 /*
  * One repository: what the analysis found about it, with every piece of
@@ -43,15 +44,6 @@ const severityTone: Record<string, BadgeTone> = {
   low: 'neutral',
   info: 'info',
 };
-
-/** A link to a file, and a line, at the commit the analysis read. */
-export const codeHref = (
-  repository: Repository,
-  commit: string,
-  path: string,
-  line: number | null,
-) =>
-  `${repository.url}/blob/${commit}/${path}${line !== null ? `#L${line}` : ''}`;
 
 export function RepositoryDetail({ id }: { id: string }) {
   const repository = useQuery({
@@ -142,7 +134,11 @@ export function RepositoryDetail({ id }: { id: string }) {
               }
               label={
                 repo.status === 'connected' && repo.lastAnalyzedAt
-                  ? `Indexed ${formatRelative(repo.lastAnalyzedAt)} at ${repo.lastAnalyzedCommit ?? ''}`
+                  ? `Indexed ${formatRelative(repo.lastAnalyzedAt)}${
+                      repo.lastAnalyzedCommit
+                        ? ` at ${shortCommit(repo.lastAnalyzedCommit)}`
+                        : ''
+                    }`
                   : (repo.statusMessage ?? undefined)
               }
             />
@@ -320,8 +316,11 @@ function AnalysisReport({
           Analysis
         </h2>
         <span className="text-xs text-fg-muted">
-          at <span className="font-mono">{report.commit}</span>,{' '}
-          {formatRelative(report.analyzedAt)}
+          at{' '}
+          <span className="font-mono" title={report.commit}>
+            {shortCommit(report.commit)}
+          </span>
+          , {formatRelative(report.analyzedAt)}
         </span>
       </header>
       <dl className="grid gap-x-8 gap-y-4 px-4 py-4 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">
@@ -373,16 +372,20 @@ function AnalysisReport({
           )}
         </Row>
         <Row title="Languages">
-          <ul className="flex flex-wrap gap-x-4 gap-y-1">
-            {repository.languages.map((language) => (
-              <li key={language.name} className="tabular-nums">
-                {language.name}{' '}
-                <span className="text-fg-muted">
-                  {Math.round(language.share * 100)}%
-                </span>
-              </li>
-            ))}
-          </ul>
+          {repository.languages.length === 0 ? (
+            <Missing>None recognised.</Missing>
+          ) : (
+            <ul className="flex flex-wrap gap-x-4 gap-y-1">
+              {repository.languages.map((language) => (
+                <li key={language.name} className="tabular-nums">
+                  {language.name}{' '}
+                  <span className="text-fg-muted">
+                    {Math.round(language.share * 100)}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Row>
         <Row title="Dependencies">
           {report.dependencies.length === 0 ? (

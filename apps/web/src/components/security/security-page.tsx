@@ -6,7 +6,6 @@ import { ExternalLink, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 
-import { codeHref } from '@/components/repositories/repository-detail';
 import { PageHeader } from '@/components/shell/page-header';
 import { Badge, type BadgeTone } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,6 +24,7 @@ import {
 } from '@/lib/findings';
 import { formatRelative } from '@/lib/format';
 import { useRepositories } from '@/lib/queries';
+import { codeHref } from '@/lib/repositories';
 
 /*
  * Every finding across the organisation's repositories. Confirmed findings
