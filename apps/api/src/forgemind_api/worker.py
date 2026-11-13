@@ -1,11 +1,15 @@
 """Executes runs. A worker claims a run in the database, keeps proving it still
 holds it, and records what it does as events. Everything known about a run is
 in those events, so a second worker can continue where a dead one stopped:
-nothing a run did is recorded twice, and nothing recorded is lost."""
+nothing a run did is recorded twice, and nothing recorded is lost.
+
+The same workers index repositories, and the same sweeper looks after the
+ones left waiting: see `indexing`."""
 
 from __future__ import annotations
 
 import logging
+import math
 import os
 import signal
 import threading
@@ -30,12 +34,15 @@ from forgemind_api.execution import (
     parse_timestamp,
     run_view,
 )
+from forgemind_api.github import GitHubProvider, make_provider
+from forgemind_api.indexing import index_repository, sweep_indexing
 from forgemind_api.leases import Heartbeat, Sessions, new_worker_id
 from forgemind_api.logging import configure_logging
 from forgemind_api.models import Run, Task
 from forgemind_api.pipeline import PIPELINE, StageFailed, Step
 from forgemind_api.queue import (
     EXECUTE_RUN,
+    INDEX_REPOSITORY,
     QUEUE,
     CeleryDispatcher,
     Dispatcher,
@@ -43,6 +50,7 @@ from forgemind_api.queue import (
     make_publisher,
     mark_undelivered,
 )
+from forgemind_api.repositories import account_login_of
 from forgemind_api.settings import Settings, SettingsError
 
 log = logging.getLogger("forgemind_api.worker")
@@ -536,6 +544,27 @@ class ProcessSessions:
         return self._sessions
 
 
+class ProcessProvider:
+    """A GitHub per process, for the same reason: its connections are not to
+    be shared across a fork either."""
+
+    def __init__(self, settings: Settings, sessions: ProcessSessions) -> None:
+        self._settings = settings
+        self._sessions = sessions
+        self._pid: int | None = None
+        self._provider: GitHubProvider | None = None
+
+    def __call__(self) -> GitHubProvider:
+        if self._provider is None or self._pid != os.getpid():
+            self._provider = make_provider(self._settings, self._account)
+            self._pid = os.getpid()
+        return self._provider
+
+    def _account(self, installation_id: int) -> str | None:
+        with self._sessions()() as db:
+            return account_login_of(db, installation_id)
+
+
 def _database_url(settings: Settings, purpose: str) -> str:
     if settings.database_url is None:
         raise SettingsError(f"FORGEMIND_DATABASE_URL is required to {purpose}")
@@ -543,14 +572,30 @@ def _database_url(settings: Settings, purpose: str) -> str:
 
 
 def build_worker(settings: Settings, pipeline: Sequence[Step] = PIPELINE) -> Celery:
-    """The Celery application with the task a worker executes."""
+    """The Celery application with the tasks a worker executes."""
     sessions = ProcessSessions(_database_url(settings, "run a worker"))
+    provider = ProcessProvider(settings, sessions)
     celery = make_celery(settings)
 
     @celery.task(name=EXECUTE_RUN)
     def execute(run_id: str) -> str:  # pyright: ignore[reportUnusedFunction]
         verdict = execute_run(sessions(), uuid.UUID(run_id), settings, pipeline)
         log.info("delivery handled", extra={"run_id": run_id, "verdict": verdict})
+        return verdict
+
+    # A clone that outlasts its own time limit by a minute is ended with the
+    # process it runs in; the sweeper then sees the repository abandoned.
+    @celery.task(
+        name=INDEX_REPOSITORY, time_limit=math.ceil(settings.indexing_seconds) + 60
+    )
+    def index(repository_id: str) -> str:  # pyright: ignore[reportUnusedFunction]
+        verdict = index_repository(
+            sessions(), uuid.UUID(repository_id), settings, provider()
+        )
+        log.info(
+            "indexing delivery handled",
+            extra={"repository_id": repository_id, "verdict": verdict},
+        )
         return verdict
 
     return celery
@@ -584,7 +629,7 @@ def run_worker(settings: Settings, pipeline: Sequence[Step] = PIPELINE) -> int:
 
 def run_sweeper(settings: Settings, stop: threading.Event | None = None) -> int:
     """Sweeps on a timer until told to stop. Its own process, so recovery
-    never waits behind the runs the workers are busy with."""
+    never waits behind what the workers are busy with."""
     configure_logging(settings.log_level)
     engine = make_engine(_database_url(settings, "run the sweeper"))
     sessions = make_session_factory(engine)
@@ -605,6 +650,9 @@ def run_sweeper(settings: Settings, stop: threading.Event | None = None) -> int:
                 counts = sweep(sessions, settings, dispatcher)
                 if any(counts.values()):
                     log.info("swept", extra=counts)
+                counts = sweep_indexing(sessions, settings, dispatcher)
+                if any(counts.values()):
+                    log.info("swept indexing", extra=counts)
             except SQLAlchemyError:
                 log.warning("sweep failed; trying again", exc_info=True)
             stopping.wait(settings.worker_sweep_seconds)

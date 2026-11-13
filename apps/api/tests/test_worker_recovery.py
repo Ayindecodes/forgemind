@@ -4,7 +4,6 @@ fails, with its events intact."""
 
 from __future__ import annotations
 
-import json
 import os
 import signal
 import threading
@@ -27,6 +26,7 @@ from tests.workers import (
     events_of,
     kill,
     kinds,
+    logged,
     queued_messages,
     queued_run,
     run_of,
@@ -66,12 +66,6 @@ def inside(sessions: Sessions, run_id: uuid.UUID, stage: str) -> bool:
         event["type"] == "log" and event["text"] == f"{stage} at work"
         for event in events_of(sessions, run_id)
     )
-
-
-def logged(log: Path) -> list[dict[str, Any]]:
-    """What a process wrote, which must be one JSON object to a line."""
-    lines = log.read_text().splitlines(keepends=True)
-    return [json.loads(line) for line in lines if line.endswith("\n")]
 
 
 def statuses(sessions: Sessions, run_id: uuid.UUID, stage: str) -> list[str]:

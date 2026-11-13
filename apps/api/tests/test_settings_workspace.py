@@ -1,10 +1,14 @@
 """Where repositories are checked out, how long and how large a checkout may
 be, and where this machine's own repositories are offered from."""
 
+import math
+
 import pytest
 
 from forgemind_api.github import RealGitHub, SimulatedGitHub, make_provider
+from forgemind_api.queue import EXECUTE_RUN, INDEX_REPOSITORY
 from forgemind_api.settings import Settings, SettingsError, load_settings
+from forgemind_api.worker import build_worker
 
 GITHUB = {
     "FORGEMIND_GITHUB_PROVIDER": "github",
@@ -83,3 +87,22 @@ def test_the_simulated_github_is_given_both_directories() -> None:
     assert isinstance(github, SimulatedGitHub)
     assert github.workspace_root == "/var/workspaces"
     assert github.local_repositories == "/srv/repos"
+
+
+def test_a_worker_runs_and_indexes_and_ends_an_indexing_that_outlasts_its_limit() -> (
+    None
+):
+    settings = Settings(
+        environment="test",
+        database_url="postgresql+psycopg://a:b@db/c",
+        redis_url="redis://queue:6379/0",
+        indexing_seconds=42.5,
+    )
+    celery = build_worker(settings)
+    try:
+        ours = {name for name in celery.tasks if name.startswith("forgemind.")}
+        assert ours == {EXECUTE_RUN, INDEX_REPOSITORY}
+        # A minute past the checkout's own limit, the process is ended.
+        assert celery.tasks[INDEX_REPOSITORY].time_limit == math.ceil(42.5) + 60 == 103
+    finally:
+        celery.close()

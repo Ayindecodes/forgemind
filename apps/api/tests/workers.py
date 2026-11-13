@@ -280,6 +280,12 @@ def ask_to_stop(process: subprocess.Popen[bytes], seconds: float = 30) -> int:
     return process.wait(seconds)
 
 
+def logged(log: Path) -> list[dict[str, Any]]:
+    """What a process wrote, which must be one JSON object to a line."""
+    lines = log.read_text().splitlines(keepends=True)
+    return [json.loads(line) for line in lines if line.endswith("\n")]
+
+
 def queued_messages(redis_url: str) -> list[tuple[str, list[Any]]]:
     """What is on the queue: each message's task name and arguments."""
     client = Redis.from_url(redis_url)  # pyright: ignore[reportUnknownMemberType]
