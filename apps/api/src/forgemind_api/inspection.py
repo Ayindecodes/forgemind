@@ -596,6 +596,8 @@ class Reading:
         self.unreadable: list[tuple[str, str]] = []
         # Directories nothing starts from.
         self.aside = TRIALS | ILLUSTRATIONS
+        # Cargo workspaces read so far: where each is, and what it leaves out.
+        self.workspaces: list[tuple[str, list[str]]] = []
 
     def read_all(self) -> None:
         for path in self.manifest_paths():
@@ -1123,8 +1125,19 @@ class Reading:
                 names.add(name)
                 self.dependency("cargo", name, version)
                 self.framework(CARGO_FRAMEWORKS.get(name))
-        self.command(self.tests, directory, "cargo test")
-        self.command(self.builds, directory, "cargo build")
+        if "workspace" in data:
+            # Cargo tests and builds every member from here.
+            excluded = [
+                join(directory, out.removeprefix("./").rstrip("/"))
+                for out in listing(mapping(data["workspace"]).get("exclude"))
+                if isinstance(out, str)
+            ]
+            self.workspaces.append((directory, excluded))
+            self.command(self.tests, directory, "cargo test --workspace")
+            self.command(self.builds, directory, "cargo build --workspace")
+        elif not self.workspace_member(directory):
+            self.command(self.tests, directory, "cargo test")
+            self.command(self.builds, directory, "cargo build")
         self.runnable.append((path, None))
         main = join(directory, "src/main.rs")
         self.entry(main, "server" if names & RUST_SERVERS else "cli")
@@ -1139,6 +1152,19 @@ class Reading:
         ):
             text = self.tree.read(path) or ""
             self.unlocked.append(Unlocked(path, [line_of(text, "[dependencies]")]))
+
+    def workspace_member(self, directory: str) -> bool:
+        """Whether a Cargo workspace read earlier takes this crate in. Manifests
+        are read from the top down, so the workspace comes before its members."""
+
+        def within(inner: str, outer: str) -> bool:
+            return outer == "" or inner == outer or inner.startswith(f"{outer}/")
+
+        return any(
+            within(directory, root)
+            and not any(within(directory, out) for out in excluded)
+            for root, excluded in self.workspaces
+        )
 
     def php(self, path: str, directory: str) -> None:
         data = self.parsed(path, "JSON")

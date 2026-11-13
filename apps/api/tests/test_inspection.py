@@ -411,6 +411,53 @@ def test_a_rust_crate(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.parametrize("at", ["", "engine"])
+def test_a_cargo_workspace_is_tested_and_built_from_where_it_is(
+    tmp_path: Path, at: str
+) -> None:
+    def crate(name: str, more: str = "") -> str:
+        return f'[package]\nname = "{name}"\n{more}'
+
+    def under(path: str) -> str:
+        return f"{at}/{path}" if at else path
+
+    found = inspect(
+        tmp_path,
+        {
+            under("Cargo.toml"): (
+                '[workspace]\nmembers = ["core", "cli"]\nexclude = ["./fuzz/"]\n'
+            ),
+            under("Cargo.lock"): "",
+            under("core/Cargo.toml"): crate("core"),
+            under("core/src/lib.rs"): "pub fn run() {}\n",
+            under("cli/Cargo.toml"): crate("cli", '[dependencies]\nclap = "4"\n'),
+            under("cli/src/main.rs"): "fn main() {}\n",
+            # Left out of the workspace by name, and by being one itself.
+            under("fuzz/Cargo.toml"): crate("fuzz"),
+            under("fuzzy/Cargo.toml"): crate("fuzzy"),
+            under("tools/gen/Cargo.toml"): crate("gen", "[workspace]\n"),
+            # Beside the workspace when that is `engine`, whatever its own
+            # name begins with; inside it when the workspace is everything.
+            "engine-tools/Cargo.toml": crate("tools"),
+        },
+    )
+    here = f"cd {at} && " if at else ""
+    assert found.data["testCommands"] == [
+        f"{here}cargo test --workspace",
+        *(["cd engine-tools && cargo test"] if at else []),
+        f"cd {under('fuzz')} && cargo test",
+        f"cd {under('tools/gen')} && cargo test --workspace",
+    ]
+    assert found.data["buildCommands"] == [
+        command.replace("test", "build") for command in found.data["testCommands"]
+    ]
+    assert kinds(found) == {
+        under("cli/src/main.rs"): "cli",
+        under("core/src/lib.rs"): "library",
+    }
+    assert dependencies(found) == {("cargo", "clap"): "4"}
+
+
 def test_a_php_site(tmp_path: Path) -> None:
     found = inspect(
         tmp_path,
