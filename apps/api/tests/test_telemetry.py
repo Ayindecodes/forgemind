@@ -13,14 +13,17 @@ from fastapi.testclient import TestClient
 from opentelemetry.trace import SpanKind, StatusCode
 
 from forgemind_api.app import REQUEST_ID_HEADER, create_app
+from forgemind_api.logging import request_id_var
 from forgemind_api.queue import EXECUTE_RUN
 from forgemind_api.settings import Settings
 from forgemind_api.telemetry import (
     JOB_DURATION,
     JOB_OUTCOME,
     JOBS,
+    REQUEST_ID,
     REQUEST_ID_ATTRIBUTE,
     Telemetry,
+    carried,
 )
 from tests.observing import (
     CALLER_SPAN_ID,
@@ -186,6 +189,53 @@ def test_a_job_that_raises_is_an_error_everywhere_it_is_recorded() -> None:
     )
     assert (line["trace_id"], line["span_id"]) == (trace_id_of(span), span_id_of(span))
     assert isinstance(line["duration_ms"], int)
+
+
+def test_what_a_message_carries_is_the_trace_and_the_request_it_was_sent_in() -> None:
+    assert carried() == {}
+    seen = observed(SETTINGS)
+    token = request_id_var.set("request-9")
+    try:
+        with seen.telemetry.job("forgemind.example"):
+            carrier = carried()
+        assert carried() == {REQUEST_ID: "request-9"}
+    finally:
+        request_id_var.reset(token)
+    [span] = seen.spans()
+    assert sorted(carrier) == [REQUEST_ID, "traceparent"]
+    assert carrier[REQUEST_ID] == "request-9"
+    # The W3C header: a version, the trace, the span sending, and flags.
+    assert carrier["traceparent"].split("-")[:3] == [
+        "00",
+        trace_id_of(span),
+        span_id_of(span),
+    ]
+
+
+def test_a_job_taken_from_the_queue_continues_the_trace_its_message_was_sent_in() -> (
+    None
+):
+    sender, worker = observed(SETTINGS), observed(SETTINGS, "forgemind-worker")
+    with sender.telemetry.job("forgemind.example"):
+        carrier = carried()
+    with worker.telemetry.job(EXECUTE_RUN, carrier):
+        pass
+    # A message from a sender that traced nothing, or wrote nonsense, is
+    # still a delivery: it starts a trace of its own.
+    with worker.telemetry.job(EXECUTE_RUN, {}):
+        pass
+    with worker.telemetry.job(EXECUTE_RUN, {"traceparent": "nonsense"}):
+        pass
+    [sent] = sender.spans()
+    continued, alone, confused = worker.spans()
+    assert (trace_id_of(continued), parent_id_of(continued)) == (
+        trace_id_of(sent),
+        span_id_of(sent),
+    )
+    assert [span.kind for span in worker.spans()] == [SpanKind.CONSUMER] * 3
+    assert alone.parent is None
+    assert confused.parent is None
+    assert len({trace_id_of(span) for span in worker.spans()}) == 3
 
 
 # --- sending

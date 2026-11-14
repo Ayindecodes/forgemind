@@ -20,6 +20,7 @@ from forgemind_api.app import create_app
 from forgemind_api.deps import Current, Db, Queue
 from forgemind_api.errors import ApiFailure
 from forgemind_api.indexing import sweep_indexing
+from forgemind_api.logging import request_id_var
 from forgemind_api.models import Repository, Run, Task
 from forgemind_api.queue import (
     EXECUTE_RUN,
@@ -30,8 +31,17 @@ from forgemind_api.queue import (
     make_publisher,
 )
 from forgemind_api.settings import Settings
+from forgemind_api.telemetry import REQUEST_ID, TRACEPARENT
 from forgemind_api.worker import sweep
-from tests.workers import QUIET, Recorder, queued_messages, run_of, settings_for
+from tests.observing import observed, span_id_of, trace_id_of
+from tests.workers import (
+    QUIET,
+    Recorder,
+    queued_headers,
+    queued_messages,
+    run_of,
+    settings_for,
+)
 
 Sessions = sessionmaker[Session]
 
@@ -87,6 +97,42 @@ def test_a_repository_to_index_is_one_message_naming_it(
     assert CeleryDispatcher(celery).dispatch_indexing(repository_id) is True
     celery.close()
     assert queued_messages(redis_url) == [(INDEX_REPOSITORY, [str(repository_id)])]
+
+
+def test_a_message_carries_the_trace_and_the_request_it_was_sent_in(
+    own_database_url: str, redis_url: str
+) -> None:
+    settings = settings_for(own_database_url, redis_url=redis_url)
+    celery = make_publisher(settings)
+    dispatcher = CeleryDispatcher(celery)
+    seen = observed(settings)
+    token = request_id_var.set("request-7")
+    try:
+        with seen.telemetry.job("sending"):
+            assert dispatcher.dispatch(uuid.uuid4()) is True
+            assert dispatcher.dispatch_indexing(uuid.uuid4()) is True
+    finally:
+        request_id_var.reset(token)
+    # Sent from nowhere in particular, a message has neither to carry.
+    assert dispatcher.dispatch(uuid.uuid4()) is True
+    celery.close()
+
+    [sending] = seen.spans()
+    # The newest message is the first in the list.
+    alone, repository, run = queued_headers(redis_url)
+    assert [carrying["task"] for carrying in (run, repository, alone)] == [
+        EXECUTE_RUN,
+        INDEX_REPOSITORY,
+        EXECUTE_RUN,
+    ]
+    for carrying in (run, repository):
+        assert carrying[TRACEPARENT].split("-")[:3] == [
+            "00",
+            trace_id_of(sending),
+            span_id_of(sending),
+        ]
+        assert carrying[REQUEST_ID] == "request-7"
+    assert TRACEPARENT not in alone and REQUEST_ID not in alone
 
 
 def test_a_queue_that_cannot_be_reached_is_reported_promptly_and_not_raised(

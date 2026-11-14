@@ -5,7 +5,9 @@ recorded always and sent only where an OTLP endpoint is configured, so turning
 observability on is configuration.
 
 A request is traced and timed by the FastAPI instrumentation. A job, which is
-a delivery a worker handles or a sweep, is traced and counted here."""
+a delivery a worker handles or a sweep, is traced and counted here. A message
+on the queue carries the trace it was sent in, so a run's delivery belongs to
+the trace of the request, or the sweep, that queued it."""
 
 from __future__ import annotations
 
@@ -32,11 +34,16 @@ from opentelemetry.trace.propagation.tracecontext import (
     TraceContextTextMapPropagator,
 )
 
+from forgemind_api.logging import request_id_var
 from forgemind_api.settings import Settings
 
 log = logging.getLogger("forgemind_api.telemetry")
 
 Service = Literal["forgemind-api", "forgemind-worker", "forgemind-sweeper"]
+
+# What a queue message carries of whatever sent it.
+TRACEPARENT = "traceparent"
+REQUEST_ID = "forgemind_request_id"
 
 JOBS = "forgemind.jobs"
 JOB_DURATION = "forgemind.job.duration"
@@ -49,6 +56,17 @@ REQUEST_ID_ATTRIBUTE = "forgemind.request_id"
 EXPORT_SECONDS = 5
 
 _PROPAGATOR = TraceContextTextMapPropagator()
+
+
+def carried() -> dict[str, str]:
+    """What a message takes with it from whatever is sending it: the trace it
+    is part of, and the id of the request where there is one."""
+    carrier: dict[str, str] = {}
+    _PROPAGATOR.inject(carrier)
+    request_id = request_id_var.get()
+    if request_id:
+        carrier[REQUEST_ID] = request_id
+    return carrier
 
 
 @dataclass

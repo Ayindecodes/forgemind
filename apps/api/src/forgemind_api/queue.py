@@ -1,7 +1,9 @@
 """The queue between the API and its workers. A message only says that a run,
 or a repository waiting to be indexed, wants a worker; the database decides
 who gets it. So a message may be lost, repeated or late without anything
-being skipped or done twice."""
+being skipped or done twice. It also carries the trace it was sent in and the
+id of the request that sent it, which is how a worker's spans and log lines
+are found from the request's."""
 
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from forgemind_api.auth import now
 from forgemind_api.db import after_commit
 from forgemind_api.models import Run
 from forgemind_api.settings import Settings, SettingsError
+from forgemind_api.telemetry import carried
 
 log = logging.getLogger("forgemind_api.queue")
 
@@ -90,7 +93,9 @@ class CeleryDispatcher:
 
     def dispatch(self, run_id: uuid.UUID) -> bool:
         try:
-            self._celery.send_task(EXECUTE_RUN, args=[str(run_id)], retry=False)
+            self._celery.send_task(
+                EXECUTE_RUN, args=[str(run_id)], headers=carried(), retry=False
+            )
         except Exception:
             # Whatever the queue's trouble, the run is safe in the database.
             log.warning("run not queued", extra={"run_id": str(run_id)}, exc_info=True)
@@ -100,7 +105,10 @@ class CeleryDispatcher:
     def dispatch_indexing(self, repository_id: uuid.UUID) -> bool:
         try:
             self._celery.send_task(
-                INDEX_REPOSITORY, args=[str(repository_id)], retry=False
+                INDEX_REPOSITORY,
+                args=[str(repository_id)],
+                headers=carried(),
+                retry=False,
             )
         except Exception:
             # The repository is recorded as waiting; the sweeper asks again.

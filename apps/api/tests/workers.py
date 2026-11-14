@@ -289,16 +289,24 @@ def logged(log: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in lines if line.endswith("\n")]
 
 
-def queued_messages(redis_url: str) -> list[tuple[str, list[Any]]]:
-    """What is on the queue: each message's task name and arguments."""
+def _queued(redis_url: str) -> list[dict[str, Any]]:
     client = Redis.from_url(redis_url)  # pyright: ignore[reportUnknownMemberType]
     try:
         raw: Any = client.lrange(QUEUE, 0, -1)  # pyright: ignore[reportUnknownMemberType]
     finally:
         client.close()
+    return [json.loads(item) for item in raw]
+
+
+def queued_messages(redis_url: str) -> list[tuple[str, list[Any]]]:
+    """What is on the queue: each message's task name and arguments."""
     messages: list[tuple[str, list[Any]]] = []
-    for item in raw:
-        message = json.loads(item)
+    for message in _queued(redis_url):
         arguments = json.loads(base64.b64decode(message["body"]))[0]
         messages.append((message["headers"]["task"], arguments))
     return messages
+
+
+def queued_headers(redis_url: str) -> list[dict[str, Any]]:
+    """What each message on the queue carries beside its arguments."""
+    return [message["headers"] for message in _queued(redis_url)]
