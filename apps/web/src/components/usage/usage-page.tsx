@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/shell/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Metric, MetricGroup } from '@/components/ui/metric';
 import { SkeletonText } from '@/components/ui/skeleton';
-import { ErrorState } from '@/components/ui/states';
+import { EmptyState, ErrorState } from '@/components/ui/states';
 import {
   formatBytes,
   formatCompact,
@@ -16,7 +16,13 @@ import {
   formatPercent,
 } from '@/lib/format';
 import { useUsage } from '@/lib/queries';
-import { costView, quotaRatio, runShare, totalTokens } from '@/lib/usage';
+import {
+  costNote,
+  costView,
+  quotaRatio,
+  runShare,
+  totalTokens,
+} from '@/lib/usage';
 
 /*
  * What the organisation has used this period, straight from the contract.
@@ -61,6 +67,7 @@ export function UsagePage() {
 
   const data = usage.data;
   const cost = costView(data.cost);
+  const note = costNote(cost);
   const share = runShare(data);
   const period = `${new Date(data.period.from).toLocaleDateString()} to ${new Date(data.period.to).toLocaleDateString()}`;
 
@@ -107,55 +114,64 @@ export function UsagePage() {
               unit="spent on retries"
             />
           </MetricGroup>
-          <p className="mt-3 text-xs text-fg-secondary" data-testid="cost-note">
-            {cost.kind === 'estimate'
-              ? 'Estimated from token and sandbox usage at list prices. The billed amount may differ.'
-              : cost.kind === 'actual'
-                ? 'The amount billed for this period.'
-                : `No cost figure: ${cost.reason}`}
-          </p>
+          {note && (
+            <p
+              className="mt-3 text-xs text-fg-secondary"
+              data-testid="cost-note"
+            >
+              {note}
+            </p>
+          )}
         </div>
       </Panel>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel id="tokens" title="Tokens by model" testId="tokens">
-          <table
-            className="w-full text-left text-sm"
-            aria-label="Tokens by model"
-          >
-            <thead className="text-xs text-fg-secondary">
-              <tr className="border-b border-line">
-                <th className="px-4 py-2 font-medium">Model</th>
-                <th className="px-2 py-2 text-right font-medium">Input</th>
-                <th className="px-2 py-2 text-right font-medium">Output</th>
-                <th className="px-4 py-2 text-right font-medium">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line tabular-nums">
-              {data.tokens.map((row) => (
-                <tr
-                  key={`${row.provider}/${row.model}`}
-                  data-testid="token-row"
-                >
-                  <td className="px-4 py-2">
-                    <span className="font-mono text-xs">{row.model}</span>
-                    <span className="ml-2 text-xs text-fg-muted">
-                      {row.provider}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2 text-right">
-                    {formatNumber(row.input)}
-                  </td>
-                  <td className="px-2 py-2 text-right">
-                    {formatNumber(row.output)}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    {formatNumber(row.input + row.output)}
-                  </td>
+          {data.tokens.length === 0 ? (
+            <EmptyState
+              title="No model calls in this period"
+              description="Tokens are counted here once a run calls a model."
+              data-testid="tokens-empty"
+            />
+          ) : (
+            <table
+              className="w-full text-left text-sm"
+              aria-label="Tokens by model"
+            >
+              <thead className="text-xs text-fg-secondary">
+                <tr className="border-b border-line">
+                  <th className="px-4 py-2 font-medium">Model</th>
+                  <th className="px-2 py-2 text-right font-medium">Input</th>
+                  <th className="px-2 py-2 text-right font-medium">Output</th>
+                  <th className="px-4 py-2 text-right font-medium">Total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-line tabular-nums">
+                {data.tokens.map((row) => (
+                  <tr
+                    key={`${row.provider}/${row.model}`}
+                    data-testid="token-row"
+                  >
+                    <td className="px-4 py-2">
+                      <span className="font-mono text-xs">{row.model}</span>
+                      <span className="ml-2 text-xs text-fg-muted">
+                        {row.provider}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      {formatNumber(row.input)}
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      {formatNumber(row.output)}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      {formatNumber(row.input + row.output)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </Panel>
 
         <Panel id="runs" title={`Runs (${data.runs.total})`} testId="runs">
@@ -191,7 +207,7 @@ export function UsagePage() {
               />
               <Metric
                 label="Memory"
-                value={formatNumber(Math.round(data.memoryMbHours))}
+                value={formatNumber(Math.round(data.memoryMbHours * 10) / 10)}
                 unit="MB-hours"
               />
               <Metric label="Storage" value={formatBytes(data.storageBytes)} />
