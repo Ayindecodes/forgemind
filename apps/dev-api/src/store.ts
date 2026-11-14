@@ -1,7 +1,10 @@
 import {
   categoryExpectsPatch,
   initialRun,
+  inPeriod,
+  meterRun,
   reduceRun,
+  totalUsage,
   type AuditEvent,
   type Check,
   type ConnectRepository,
@@ -97,6 +100,13 @@ type Scoped<T> = T & { organizationId: string };
 const ANALYSIS_MS = 8_000;
 const SESSION_DAYS = 7;
 const DAY = 86_400_000;
+
+/*
+ * What the demo's cost estimate is worked out at: rates made up for it,
+ * which are no provider's prices.
+ */
+const DEMO_USD_PER_MILLION_TOKENS = 5;
+const DEMO_USD_PER_SANDBOX_HOUR = 0.6;
 
 export const SESSION_COOKIE = 'fm_session';
 
@@ -1195,44 +1205,50 @@ export function createStore(options: StoreOptions = {}) {
       [...data.pullRequests.values()]
         .filter((pr) => data.tasks.get(pr.taskId)?.organizationId === orgId)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    /*
+     * Measured from the events of the last thirty days, the way the real
+     * service measures: the tokens, time and memory are what the runs'
+     * events add up to. Only the storage, the limits and the rates behind
+     * the cost estimate are made up here.
+     */
     usage(orgId: string): UsageSummary {
-      const runs = [...data.runs.values()]
-        .filter(
-          (entry) => data.tasks.get(entry.run.taskId)?.organizationId === orgId,
-        )
-        .map((entry) => entry.run);
+      const entries = [...data.runs.values()].filter(
+        (entry) => data.tasks.get(entry.run.taskId)?.organizationId === orgId,
+      );
+      // A store that plays its runs at once stamps their events with the
+      // times they would have happened at, some of them still to come. The
+      // period reaches as far as the events do.
+      const to = new Date(
+        Math.max(
+          now().getTime(),
+          ...entries.flatMap(({ events }) => {
+            const last = events.at(-1);
+            return last ? [Date.parse(last.at)] : [];
+          }),
+        ),
+      );
+      const period = {
+        from: new Date(to.getTime() - 30 * DAY).toISOString(),
+        to: to.toISOString(),
+      };
+      const used = totalUsage(
+        entries
+          .flatMap((entry) => meterRun(entry.events))
+          .filter(({ at }) => inPeriod(at, period)),
+      );
+      const tokens = used.tokens.reduce(
+        (sum, { input, output }) => sum + input + output,
+        0,
+      );
+      const runs = entries
+        .map((entry) => entry.run)
+        .filter((run) => run.startedAt && inPeriod(run.startedAt, period));
       const count = (outcome: Run['outcome']) =>
         runs.filter((run) => run.outcome === outcome).length;
-      const sandboxSeconds = runs.reduce(
-        (sum, run) => sum + run.resources.sandboxSeconds,
-        0,
-      );
-      const cpuSeconds = runs.reduce(
-        (sum, run) => sum + run.resources.cpuSeconds,
-        0,
-      );
-      const to = now();
-      const from = new Date(to.getTime() - 30 * DAY);
 
       return {
-        period: { from: from.toISOString(), to: to.toISOString() },
-        tokens: [
-          {
-            provider: 'anthropic',
-            model: 'claude-opus-5-5',
-            input: 412_300 * runs.length,
-            output: 38_900 * runs.length,
-          },
-          {
-            provider: 'anthropic',
-            model: 'claude-sonnet-5-5',
-            input: 905_100 * runs.length,
-            output: 61_200 * runs.length,
-          },
-        ],
-        sandboxSeconds,
-        cpuSeconds,
-        memoryMbHours: Math.round(sandboxSeconds * 0.4),
+        period,
+        ...used,
         runs: {
           total: runs.length,
           succeeded: count('succeeded'),
@@ -1240,22 +1256,23 @@ export function createStore(options: StoreOptions = {}) {
           failed: count('failed'),
           unverified: count('unverified'),
         },
-        retryOverheadSeconds: runs.reduce(
-          (sum, run) => sum + run.retries.used * 48,
-          0,
-        ),
         storageBytes: 184_320_000 + runs.length * 2_400_000,
         cost: {
           kind: 'estimate',
-          amountUsd: Math.round(runs.length * 3.42 * 100) / 100,
+          amountUsd:
+            Math.round(
+              (tokens / 1_000_000) * DEMO_USD_PER_MILLION_TOKENS * 100 +
+                (used.sandboxSeconds / 3600) * DEMO_USD_PER_SANDBOX_HOUR * 100,
+            ) / 100,
         },
         quotas: {
           concurrentRuns: {
-            used: runs.filter((run) => run.status === 'running').length,
+            used: entries.filter((entry) => entry.run.status === 'running')
+              .length,
             max: 3,
           },
           monthlyRuns: { used: runs.length, max: 200 },
-          monthlyTokens: { used: 1_317_400 * runs.length, max: 50_000_000 },
+          monthlyTokens: { used: tokens, max: 50_000_000 },
         },
       };
     },
