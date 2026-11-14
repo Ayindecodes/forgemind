@@ -7,14 +7,21 @@
 #      worker, which keeps nothing of the checkout;
 #   3. a run and an indexing whose messages the queue lost are put back by the
 #      sweeper and done once;
-#   4. the worker and the sweeper stop cleanly when asked to.
+#   4. the worker and the sweeper stop cleanly when asked to;
+#   5. what the worker logs about a run names the request that asked for it
+#      and the trace that request was served in;
+#   6. the usage the API reports is what the events of those runs add up to,
+#      both as the API serves them and as the database holds them.
 #
 #   scripts/worker-check.sh [TAG]    TAG defaults to forgemind-api:gate
 #
 # Uses port 4297 and containers named workercheck-*, and removes what it
-# started whether it passes or not.
+# started whether it passes or not. The usage is held against the events by
+# the conformance harness, which needs the workspace installed (pnpm install).
 set -euo pipefail
 
+root=$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)
+harness=("$root/packages/conformance/node_modules/.bin/tsx" "$root/packages/conformance/src/cli.ts")
 tag=${1:-forgemind-api:gate}
 port=4297
 net=forgemind-workercheck
@@ -81,6 +88,21 @@ json() {
 
 api() {
   curl -sf -H 'cookie: fm_session=dev-owner' "$@"
+}
+
+# The newest line a container logged that has every one of the given texts.
+logged() {
+  local name=$1 lines text
+  shift
+  lines=$(docker logs "$name" 2>&1)
+  for text in "$@"; do
+    lines=$(grep -F -- "$text" <<<"$lines" || true)
+  done
+  tail -n 1 <<<"$lines"
+}
+
+has_logged() {
+  [[ -n $(logged "$@") ]]
 }
 
 background() {
@@ -180,6 +202,21 @@ wait_until "the worker to finish run $first" 60 run_finished "$first"
 expect_record "$first"
 echo "run $first: started and ended by the worker"
 
+echo "## the worker's account of the run leads back to the request for it"
+delivery=('"message": "delivery handled"' "\"run_id\": \"$first\"")
+wait_until "the worker to report run $first" 15 has_logged workercheck-worker-1 "${delivery[@]}"
+handled=$(logged workercheck-worker-1 "${delivery[@]}")
+asked=$(logged workercheck-api '"message": "request"' '"method": "POST"' '"path": "/tasks"')
+[[ -n $asked ]] || fail "the API logged no request that created a task"
+trace=$(json 'data.trace_id' <<<"$asked")
+request=$(json 'data.request_id' <<<"$asked")
+[[ $trace =~ ^[0-9a-f]{32}$ ]] || fail "the request that created the task was logged in trace: $trace"
+[[ $(json 'data.trace_id' <<<"$handled") == "$trace" ]] ||
+  fail "the worker handled run $first outside trace $trace: $handled"
+[[ $(json 'data.request_id' <<<"$handled") == "$request" ]] ||
+  fail "the worker handled run $first without naming request $request: $handled"
+echo "run $first: request $request, trace $trace, in the API's log and the worker's"
+
 echo "## a repository is cloned and indexed by the worker"
 docs=$(connect 811006 forgemind/docs)
 wait_until "the worker to index repository $docs" 60 repository_indexed "$docs"
@@ -210,6 +247,19 @@ expect_analysis "$infra" workercheck-worker-2
 docker logs workercheck-sweeper 2>&1 | grep -q '"message": "swept indexing".*"queued": 1' ||
   fail "the sweeper did not report queueing an indexing"
 echo "repository $infra: queued again and indexed"
+
+echo "## the usage the API reports is what the events add up to"
+held=$("${harness[@]}" --base-url "$base" --cookie fm_session=dev-owner --data-source live --only usage) ||
+  fail "the usage is not what the events served beside it add up to: $held"
+grep -q 'adds up to the 4 events of 2 runs' <<<"$held" ||
+  fail "the usage was held against something other than the two runs and their four events: $held"
+echo "$held"
+# And the ledger it is summed from, entry by entry, against the event table.
+ledger=$(docker run --rm --network "$net" "${settings[@]}" "$tag" python -m forgemind_api usage-check) ||
+  fail "the usage ledger and the events disagree: $ledger"
+[[ $(json '[data.runs, data.events, data.agrees].join(" ")' <<<"$ledger") == "2 4 true" ]] ||
+  fail "the usage ledger was checked against: $ledger"
+echo "ledger: $ledger"
 
 echo "## the sweeper stops when asked to"
 stops_cleanly workercheck-sweeper
