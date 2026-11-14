@@ -18,6 +18,7 @@ from sqlalchemy import Engine, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
+from forgemind_api import usage
 from forgemind_api.app import create_app
 from forgemind_api.execution import append_event, parse_timestamp
 from forgemind_api.metering import Measure, total_usage, units
@@ -32,7 +33,8 @@ from forgemind_api.models import (
 from forgemind_api.seed import seed
 from forgemind_api.settings import Prices, Settings, TokenPrice
 from forgemind_api.usage import estimated_cost, usage_summary
-from tests.test_execution import OWNER, create
+from tests.helpers import newcomer
+from tests.test_execution import OWNER, REVIEWER, create, replay_fixture
 from tests.test_models import seed as seed_run
 
 FIXTURES = Path(__file__).parent / "fixtures" / "runs"
@@ -432,6 +434,9 @@ def test_no_cost_is_ever_called_actual(prices: Prices, name: str) -> None:
     assert estimated_cost(measured(fixture(name)), prices)["kind"] != "actual"
 
 
+# --- over HTTP
+
+
 @pytest.fixture(scope="module")
 def client(database_url: str, engine: Engine) -> Iterator[TestClient]:
     settings = Settings(environment="test", database_url=database_url, prices=PRICES)
@@ -439,3 +444,60 @@ def client(database_url: str, engine: Engine) -> Iterator[TestClient]:
     app = create_app(settings)
     yield TestClient(app)
     app.state.engine.dispose()
+
+
+@pytest.fixture
+def mid_november(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The scripted scenarios are dated; so, for these tests, is the clock."""
+    monkeypatch.setattr(usage, "now", lambda: MID_NOVEMBER)
+
+
+@pytest.mark.usefixtures("mid_november")
+def test_usage_follows_the_events_and_is_priced_as_configured(
+    client: TestClient, engine: Engine
+) -> None:
+    before = client.get("/usage", headers=OWNER)
+    assert before.status_code == 200, before.text
+    task = create(client, OWNER, title="Metered")
+    replay_fixture(engine, task["runId"], "happy")
+    after = client.get("/usage", headers=REVIEWER).json()
+
+    def tokens(summary: dict[str, Any]) -> dict[str, tuple[int, int]]:
+        return {
+            row["model"]: (row["input"], row["output"]) for row in summary["tokens"]
+        }
+
+    was, now = tokens(before.json()), tokens(after)
+    assert {
+        model: (now[model][0] - was.get(model, (0, 0))[0])
+        for model in ("claude-opus-5-5", "claude-sonnet-5-5")
+    } == {"claude-opus-5-5": 68_800, "claude-sonnet-5-5": 69_900}
+    assert now["claude-sonnet-5-5"][1] - was.get("claude-sonnet-5-5", (0, 0))[1] == 8190
+    for key, added in (("sandboxSeconds", 23), ("cpuSeconds", 5.5)):
+        assert round(after[key] - before.json()[key], 4) == added
+    assert after["runs"]["total"] == before.json()["runs"]["total"] + 1
+    assert after["runs"]["succeeded"] == before.json()["runs"]["succeeded"] + 1
+    assert after["period"]["from"] == "2026-11-01T00:00:00.000Z"
+    assert after["cost"]["kind"] == before.json()["cost"]["kind"] == "estimate"
+    assert round(
+        after["cost"]["amountUsd"] - before.json()["cost"]["amountUsd"], 6
+    ) == (0.242825)
+
+
+@pytest.mark.usefixtures("mid_november")
+def test_usage_is_for_members_and_only_of_their_own_organization(
+    client: TestClient, engine: Engine
+) -> None:
+    task = create(client, OWNER, title="Not theirs")
+    replay_fixture(engine, task["runId"], "failed")
+    assert client.get("/usage").status_code == 401
+    riley = newcomer(engine, "Riley Chen")
+    assert client.get("/usage", headers=riley).status_code == 403
+    client.post("/organization", json={"name": "Chen Works"}, headers=riley)
+    theirs = client.get("/usage", headers=riley).json()
+    assert theirs["tokens"] == [] and theirs["runs"]["total"] == 0
+    assert (
+        theirs["sandboxSeconds"] == 0 and theirs["quotas"]["monthlyRuns"]["used"] == 0
+    )
+    assert theirs["cost"] == {"kind": "estimate", "amountUsd": 0}
+    assert client.get("/usage", headers=OWNER).json()["tokens"] != []

@@ -28,6 +28,7 @@ from forgemind_api.routes import notifications as notification_routes
 from forgemind_api.routes import organizations as organization_routes
 from forgemind_api.routes import repositories as repository_routes
 from forgemind_api.routes import tasks as task_routes
+from forgemind_api.routes import usage as usage_routes
 from forgemind_api.settings import Settings, load_settings
 from forgemind_api.telemetry import configure_telemetry
 
@@ -135,6 +136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(repository_routes.router)
     app.include_router(task_routes.router)
     app.include_router(notification_routes.router)
+    app.include_router(usage_routes.router)
 
     @app.get("/health", response_model=Health, responses={503: {"model": Health}})
     def health(response: Response) -> Health:
