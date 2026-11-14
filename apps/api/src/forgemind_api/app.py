@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from opentelemetry import trace
 from pydantic import BaseModel
 
 from forgemind_api.db import database_reachable, make_engine, make_session_factory
@@ -30,7 +32,7 @@ from forgemind_api.routes import repositories as repository_routes
 from forgemind_api.routes import tasks as task_routes
 from forgemind_api.routes import usage as usage_routes
 from forgemind_api.settings import Settings, load_settings
-from forgemind_api.telemetry import Telemetry
+from forgemind_api.telemetry import REQUEST_ID_ATTRIBUTE, Telemetry
 
 log = logging.getLogger("forgemind_api")
 
@@ -80,19 +82,28 @@ def create_app(
         incoming = request.headers.get(REQUEST_ID_HEADER)
         request_id = incoming if incoming and len(incoming) <= 128 else uuid.uuid4().hex
         token = request_id_var.set(request_id)
+        trace.get_current_span().set_attribute(REQUEST_ID_ATTRIBUTE, request_id)
+        started = time.monotonic()
+
+        def line(status: int) -> dict[str, object]:
+            return {
+                "method": request.method,
+                "path": request.url.path,
+                "status": status,
+                "duration_ms": round((time.monotonic() - started) * 1000),
+            }
+
         try:
             response = await call_next(request)
             response.headers[REQUEST_ID_HEADER] = request_id
             response.headers[DATA_SOURCE_HEADER] = DATA_SOURCE
             response.headers[GITHUB_PROVIDER_HEADER] = settings.github_provider
-            log.info(
-                "request",
-                extra={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status": response.status_code,
-                },
-            )
+            log.info("request", extra=line(response.status_code))
+        except Exception:
+            # Nothing answered for it, so the server will, with a 500. Said
+            # here, where the line still carries the request's id.
+            log.exception("request", extra=line(500))
+            raise
         finally:
             request_id_var.reset(token)
         return response

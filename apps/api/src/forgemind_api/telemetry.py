@@ -30,6 +30,9 @@ log = logging.getLogger("forgemind_api.telemetry")
 
 Service = Literal["forgemind-api", "forgemind-worker", "forgemind-sweeper"]
 
+# On a request's span, the id its log lines and its response carry.
+REQUEST_ID_ATTRIBUTE = "forgemind.request_id"
+
 # The longest one export may take. Telemetry is never worth more of a job's
 # time, or a request's, than this.
 EXPORT_SECONDS = 5
