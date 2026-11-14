@@ -1,6 +1,7 @@
 """`python -m forgemind_api serve` serves the API; `migrate` brings the database
 to the current schema; `worker` executes runs from the queue; `sweeper` looks
-after runs that lost their worker. All read their settings from the
+after runs that lost their worker; `usage-check` compares the usage ledger
+with the events it was written from. All read their settings from the
 environment."""
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import uvicorn
 from forgemind_api.db import make_engine, migrate
 from forgemind_api.seed import seed
 from forgemind_api.settings import SettingsError, load_settings
+from forgemind_api.usage import check_usage
 from forgemind_api.worker import run_sweeper, run_worker
 
 
@@ -41,8 +43,17 @@ def main(argv: list[str]) -> int:
         return run_worker(settings)
     if command == "sweeper":
         return run_sweeper(settings)
+    if command == "usage-check":
+        if settings.database_url is None:
+            raise SettingsError("FORGEMIND_DATABASE_URL is required to check usage")
+        engine = make_engine(settings.database_url)
+        try:
+            return check_usage(engine)
+        finally:
+            engine.dispose()
     sys.stderr.write(
-        f"unknown command {command!r}; use serve, migrate, seed, worker or sweeper\n"
+        f"unknown command {command!r}; use serve, migrate, seed, worker, sweeper "
+        "or usage-check\n"
     )
     return 2
 

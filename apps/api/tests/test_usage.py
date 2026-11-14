@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api import usage
+from forgemind_api.__main__ import main
 from forgemind_api.app import create_app
 from forgemind_api.execution import append_event, parse_timestamp
 from forgemind_api.metering import Measure, total_usage, units
@@ -646,3 +647,48 @@ def test_every_way_the_ledger_can_part_from_the_events_is_reported(
         ]
 
     assert report() == []
+
+
+def test_the_check_reports_as_json_and_fails_when_they_disagree(
+    own_database_url: str,
+    sessions: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("FORGEMIND_ENVIRONMENT", "test")
+    monkeypatch.setenv("FORGEMIND_DATABASE_URL", own_database_url)
+    with sessions() as db, db.begin():
+        _, _, _, _, run = seed_run(db)
+        replay(db, run, "happy")
+        run_id = run.id
+    capsys.readouterr()
+
+    assert main(["usage-check"]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "runs": 1,
+        "events": 60,
+        "records": 18,
+        "agrees": True,
+        "differences": [],
+    }
+
+    with sessions() as db, db.begin():
+        entry(db, db.get_one(Run, run_id), 14, "sandbox_seconds").quantity = Decimal(
+            900
+        )
+    assert main(["usage-check"]) == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "runs": 1,
+        "events": 60,
+        "records": 18,
+        "agrees": False,
+        "differences": [
+            {
+                "run_id": str(run_id),
+                "event_seq": 14,
+                "what": "sandbox_seconds",
+                "expected": "9",
+                "recorded": "900",
+            }
+        ],
+    }

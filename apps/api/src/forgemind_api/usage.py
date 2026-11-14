@@ -5,14 +5,16 @@ the two disagree, so the figures can be shown to be the events' own."""
 
 from __future__ import annotations
 
+import json
+import sys
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api.auth import now
@@ -339,3 +341,29 @@ def reconcile(
             )
         )
     return Reconciliation(len(runs), events, records, differences)
+
+
+def check_usage(engine: Engine) -> int:
+    """Reconciles the whole database, from one consistent view of it, and
+    writes what it found as one line of JSON. 0 when the ledger and the
+    events agree, 1 when they do not."""
+    with (
+        engine.connect().execution_options(
+            isolation_level="REPEATABLE READ"
+        ) as connection,
+        DbSession(connection) as db,
+    ):
+        found = reconcile(db)
+    sys.stdout.write(
+        json.dumps(
+            {
+                "runs": found.runs,
+                "events": found.events,
+                "records": found.records,
+                "agrees": not found.differences,
+                "differences": [asdict(item) for item in found.differences],
+            }
+        )
+        + "\n"
+    )
+    return 1 if found.differences else 0
