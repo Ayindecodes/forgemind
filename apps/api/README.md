@@ -151,6 +151,44 @@ the arithmetic to what the contract's comes to for every scenario the dev
 API plays, and the conformance harness adds up the events a service serves
 and holds `GET /usage` to them.
 
+## Observability
+
+Every request and every job is traced, timed and logged, by the API, the
+workers and the sweeper alike (`src/forgemind_api/telemetry.py`). A job is a
+delivery a worker handles, `forgemind.execute_run` or
+`forgemind.index_repository`, or a sweep, `forgemind.sweep_runs` or
+`forgemind.sweep_indexing`.
+
+- **Traces.** One span for each request and each job. A message on the
+  queue carries the trace it was sent in, so the delivery of a run belongs
+  to the trace of the request that created its task, or of the sweep that
+  queued it again. An incoming `traceparent` header is continued.
+- **Metrics.** `http.server.duration` by route and status for requests;
+  `forgemind.jobs` and `forgemind.job.duration` by job and by what the job
+  came to.
+- **Logs.** One JSON object to a line on stdout. Every line carries
+  `request_id`, and `trace_id` and `span_id` when written inside a request
+  or a job; the line that ends a request or a job carries `duration_ms`. The
+  request id comes from the `x-request-id` header or is made up, is returned
+  in the response, and travels with the queue message, so a worker's lines
+  about a run name the request that asked for it. A sweep that found nothing
+  to do is logged at `DEBUG`.
+
+Traces and metrics are recorded always and sent only when
+`FORGEMIND_OTEL_ENDPOINT` names an OTLP/HTTP collector, such as
+`http://collector:4318`. The three processes report as `forgemind-api`,
+`forgemind-worker` and `forgemind-sweeper`. `OTEL_TRACES_SAMPLER` and
+`OTEL_TRACES_SAMPLER_ARG` choose what is sampled, as the OpenTelemetry SDK
+reads them. A worker sends what it recorded after each delivery, since it
+may be killed at any time, and waits at most five seconds for the collector
+to take its traces and five for its metrics: a collector that is down slows
+jobs by that much and fails none.
+
+`tests/test_telemetry.py` covers what is recorded, and
+`tests/test_worker_recovery.py` what real worker and sweeper processes send
+to a collector standing in for a real one. No collector ships with the
+Compose file.
+
 ## Compose
 
 From the repository root, `docker compose up` builds the service and starts
