@@ -1,33 +1,44 @@
-"""Usage: what each event enters in the ledger, and what it is estimated to
-cost."""
+"""Usage: what each event enters in the ledger, the summary an organization is
+shown, and what it is estimated to cost."""
 
 from __future__ import annotations
 
 import json
 import uuid
+from collections import Counter
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api.app import create_app
 from forgemind_api.execution import append_event, parse_timestamp
-from forgemind_api.metering import Measure, units
-from forgemind_api.models import ExecutionEvent, Run, UsageRecord
+from forgemind_api.metering import Measure, total_usage, units
+from forgemind_api.models import (
+    Artifact,
+    ExecutionEvent,
+    Organization,
+    Run,
+    Task,
+    UsageRecord,
+)
 from forgemind_api.seed import seed
 from forgemind_api.settings import Prices, Settings, TokenPrice
-from forgemind_api.usage import estimated_cost
+from forgemind_api.usage import estimated_cost, usage_summary
 from tests.test_execution import OWNER, create
 from tests.test_models import seed as seed_run
 
 FIXTURES = Path(__file__).parent / "fixtures" / "runs"
 SCENARIOS = ("failed", "happy", "investigation", "partial", "retry-then-unverified")
+# The scripted scenarios all happen on the sixth, a little after noon.
+MID_NOVEMBER = datetime(2026, 11, 14, 9, 30, 0, 250_400, tzinfo=UTC)
 
 # Invented for these tests; nobody's rates.
 PRICES = Prices(
@@ -60,6 +71,21 @@ def replay(db: DbSession, run: Run, name: str) -> dict[str, Any]:
         }
         append_event(db, run, event["type"], payload, parse_timestamp(event["at"]))
     return played
+
+
+def another_run(db: DbSession, task: Task) -> Run:
+    number = db.scalar(select(func.count()).select_from(Run)) or 0
+    run = Run(
+        task_id=task.id,
+        organization_id=task.organization_id,
+        number=number + 1,
+        expects_patch=True,
+        base_commit=task.base_commit,
+        retries_max=2,
+    )
+    db.add(run)
+    db.flush()
+    return run
 
 
 def called(model: str, tokens_in: int, tokens_out: int = 0) -> dict[str, Any]:
@@ -95,6 +121,19 @@ def ledger(db: DbSession, run: Run) -> list[UsageRecord]:
             .order_by(UsageRecord.event_seq, UsageRecord.kind, UsageRecord.direction)
         ).all()
     )
+
+
+def figures(summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: summary[key]
+        for key in (
+            "tokens",
+            "sandboxSeconds",
+            "cpuSeconds",
+            "memoryMbHours",
+            "retryOverheadSeconds",
+        )
+    }
 
 
 # --- the ledger
@@ -200,6 +239,124 @@ def test_an_event_that_is_not_recorded_enters_nothing(
             ).all()
             == []
         )
+
+
+# --- the summary
+
+
+def test_the_summary_is_what_the_months_events_measure(session: DbSession) -> None:
+    org, _, _, task, run = seed_run(session)
+    played = [replay(session, run, SCENARIOS[0])]
+    played += [replay(session, another_run(session, task), n) for n in SCENARIOS[1:]]
+    # One more that has started and not ended.
+    going = another_run(session, task)
+    append_event(
+        session, going, "run.started", START, datetime(2026, 11, 9, tzinfo=UTC)
+    )
+    session.add(
+        Artifact(
+            run_id=run.id,
+            organization_id=org.id,
+            kind="patch",
+            storage_ref="artifacts/one.patch",
+            content_type="text/x-diff",
+            size_bytes=48_213,
+            sha256="0" * 64,
+            created_at=MID_NOVEMBER,
+        )
+    )
+    session.flush()
+
+    summary = usage_summary(session, org.id, Prices(), MID_NOVEMBER)
+    expected = total_usage(measured(*played))
+    tokens = sum(row["input"] + row["output"] for row in expected["tokens"])
+    ended = Counter(scenario["run"]["outcome"] for scenario in played)
+
+    assert tokens == 752_620 and expected["retryOverheadSeconds"] == 27.1
+    assert figures(summary) == expected
+    assert summary["period"] == {
+        "from": "2026-11-01T00:00:00.000Z",
+        "to": "2026-11-14T09:30:00.250Z",
+    }
+    # A run still going is one of the total and none of the outcomes.
+    assert summary["runs"] == {
+        "total": 6,
+        "succeeded": ended["succeeded"],
+        "partial": ended["partial"],
+        "failed": ended["failed"],
+        "unverified": ended["unverified"],
+    }
+    assert sum(ended.values()) == 5 and ended["succeeded"] == 2
+    assert summary["storageBytes"] == 48_213
+    assert summary["quotas"] == {
+        "concurrentRuns": {"used": 1, "max": None},
+        "monthlyRuns": {"used": 6, "max": None},
+        "monthlyTokens": {"used": tokens, "max": None},
+    }
+
+
+def test_the_month_is_counted_from_its_first_instant_to_this_millisecond(
+    session: DbSession,
+) -> None:
+    org, _, _, _, run = seed_run(session)
+    append_event(session, run, "run.started", START, datetime(2026, 10, 30, tzinfo=UTC))
+    for tokens, at in (
+        (1, "2026-10-31T23:59:59.999999Z"),
+        (10, "2026-11-01T00:00:00.000000Z"),
+        # Finer than a millisecond is not compared: this is still the last one.
+        (100, "2026-11-14T09:30:00.250999Z"),
+        (1000, "2026-11-14T09:30:00.251000Z"),
+    ):
+        append_event(
+            session, run, "model.called", called("model-a", tokens), parse_timestamp(at)
+        )
+    summary = usage_summary(session, org.id, Prices(), MID_NOVEMBER)
+    assert summary["tokens"] == [
+        {"provider": "example", "model": "model-a", "input": 110, "output": 0}
+    ]
+    # The run started in October, so it is not one of November's.
+    assert summary["runs"]["total"] == 0
+
+    october = usage_summary(
+        session, org.id, Prices(), datetime(2026, 10, 31, 23, 59, 59, 999_999, UTC)
+    )
+    assert october["period"] == {
+        "from": "2026-10-01T00:00:00.000Z",
+        "to": "2026-10-31T23:59:59.999Z",
+    }
+    assert october["tokens"][0]["input"] == 1 and october["runs"]["total"] == 1
+
+    december = usage_summary(
+        session, org.id, Prices(), datetime(2026, 12, 1, tzinfo=UTC)
+    )
+    assert december["tokens"] == [] and december["quotas"]["monthlyTokens"]["used"] == 0
+
+
+def test_an_organization_is_shown_only_its_own_usage(session: DbSession) -> None:
+    org, _, _, _, run = seed_run(session)
+    other, _, _, _, theirs = seed_run(session)
+    played = replay(session, run, "happy")
+    replay(session, theirs, "partial")
+    mine = usage_summary(session, org.id, Prices(), MID_NOVEMBER)
+    assert figures(mine) == played["usage"]
+    assert mine["runs"]["total"] == 1 and mine["runs"]["succeeded"] == 1
+    assert (
+        figures(usage_summary(session, other.id, Prices(), MID_NOVEMBER))
+        == (fixture("partial")["usage"])
+    )
+    nobody = Organization(name="Nobody yet", slug=f"nobody-{uuid.uuid4().hex[:6]}")
+    session.add(nobody)
+    session.flush()
+    empty = usage_summary(session, nobody.id, PRICES, MID_NOVEMBER)
+    assert figures(empty) == {
+        "tokens": [],
+        "sandboxSeconds": 0,
+        "cpuSeconds": 0,
+        "memoryMbHours": 0,
+        "retryOverheadSeconds": 0,
+    }
+    assert empty["runs"]["total"] == 0 and empty["storageBytes"] == 0
+    assert empty["cost"] == {"kind": "estimate", "amountUsd": 0}
 
 
 # --- what it costs
