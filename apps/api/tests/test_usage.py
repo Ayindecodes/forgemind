@@ -1,20 +1,22 @@
 """Usage: what each event enters in the ledger, the summary an organization is
-shown, and what it is estimated to cost."""
+shown, what it is estimated to cost, and the check that the ledger still says
+what the events say."""
 
 from __future__ import annotations
 
 import json
 import uuid
 from collections import Counter
-from collections.abc import Iterator
-from datetime import UTC, datetime
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
@@ -32,7 +34,7 @@ from forgemind_api.models import (
 )
 from forgemind_api.seed import seed
 from forgemind_api.settings import Prices, Settings, TokenPrice
-from forgemind_api.usage import estimated_cost, usage_summary
+from forgemind_api.usage import Difference, estimated_cost, reconcile, usage_summary
 from tests.helpers import newcomer
 from tests.test_execution import OWNER, REVIEWER, create, replay_fixture
 from tests.test_models import seed as seed_run
@@ -123,6 +125,16 @@ def ledger(db: DbSession, run: Run) -> list[UsageRecord]:
             .order_by(UsageRecord.event_seq, UsageRecord.kind, UsageRecord.direction)
         ).all()
     )
+
+
+def entry(db: DbSession, run: Run, seq: int, kind: str) -> UsageRecord:
+    return db.scalars(
+        select(UsageRecord).where(
+            UsageRecord.run_id == run.id,
+            UsageRecord.event_seq == seq,
+            UsageRecord.kind == kind,
+        )
+    ).one()
 
 
 def figures(summary: dict[str, Any]) -> dict[str, Any]:
@@ -501,3 +513,136 @@ def test_usage_is_for_members_and_only_of_their_own_organization(
     )
     assert theirs["cost"] == {"kind": "estimate", "amountUsd": 0}
     assert client.get("/usage", headers=OWNER).json()["tokens"] != []
+
+
+# --- the ledger against the events
+
+
+def test_the_ledger_agrees_with_the_events_it_was_written_from(
+    session: DbSession,
+) -> None:
+    org, _, _, task, run = seed_run(session)
+    played = [replay(session, run, SCENARIOS[0])]
+    played += [replay(session, another_run(session, task), n) for n in SCENARIOS[1:]]
+    found = reconcile(session, org.id)
+    assert found.differences == []
+    assert found.runs == 5
+    assert found.events == sum(len(scenario["events"]) for scenario in played) == 274
+    assert found.records == sum(len(scenario["measures"]) for scenario in played) == 90
+
+
+@contextmanager
+def undone(db: DbSession) -> Generator[None]:
+    """Whatever is done to the database inside is taken back."""
+    point = db.begin_nested()
+    try:
+        yield
+    finally:
+        point.rollback()
+
+
+def test_every_way_the_ledger_can_part_from_the_events_is_reported(
+    session: DbSession,
+) -> None:
+    org, _, _, _, run = seed_run(session)
+    other, _, _, _, _ = seed_run(session)
+    replay(session, run, "retry-then-unverified")
+    who = str(run.id)
+
+    def report(organization_id: uuid.UUID | None = org.id) -> list[Difference]:
+        session.flush()
+        return reconcile(session, organization_id).differences
+
+    assert report() == []
+
+    # An entry gone: the opus call of event 12, and what it read.
+    with undone(session):
+        session.execute(
+            delete(UsageRecord).where(
+                UsageRecord.run_id == run.id,
+                UsageRecord.event_seq == 12,
+                UsageRecord.direction == "input",
+            )
+        )
+        assert report() == [Difference(who, 12, "tokens.input", "18400", None)]
+
+    # An entry with another quantity, by the smallest amount there is.
+    with undone(session):
+        entry(session, run, 14, "cpu_seconds").quantity += Decimal("0.0001")
+        assert report() == [Difference(who, 14, "cpu_seconds", "2.1", "2.1001")]
+
+    # An entry for an event that measured nothing, one tied to no event, and
+    # one tied to no run.
+    with undone(session):
+        session.add_all(
+            [
+                UsageRecord(
+                    organization_id=org.id,
+                    run_id=run.id,
+                    event_seq=1,
+                    kind="sandbox_seconds",
+                    quantity=Decimal(30),
+                ),
+                UsageRecord(
+                    organization_id=org.id,
+                    run_id=run.id,
+                    kind="tokens",
+                    direction="output",
+                    provider="example",
+                    model="model-a",
+                    quantity=Decimal(500),
+                ),
+                UsageRecord(
+                    organization_id=org.id, kind="cpu_seconds", quantity=Decimal("1.5")
+                ),
+            ]
+        )
+        assert report() == [
+            Difference(who, 1, "sandbox_seconds", None, "30"),
+            Difference(who, None, "tokens.output", None, "500"),
+            Difference(None, None, "cpu_seconds", None, "1.5"),
+        ]
+        # It is this organization's ledger that is wrong, and nobody else's.
+        assert report(other.id) == []
+
+    # An entry under a model, another organization, another time.
+    with undone(session):
+        row = entry(session, run, 45, "retry_overhead_seconds")
+        row.provider, row.model = "example", "model-a"
+        row.organization_id = other.id
+        row.recorded_at += timedelta(microseconds=1)
+        subject = "retry_overhead_seconds"
+        expected = [
+            Difference(who, 45, f"{subject} model", None, "example/model-a"),
+            Difference(who, 45, f"{subject} organization", str(org.id), str(other.id)),
+            Difference(
+                who,
+                45,
+                f"{subject} time",
+                "2026-11-06T12:00:39.700000+00:00",
+                "2026-11-06T12:00:39.700001+00:00",
+            ),
+        ]
+        assert report() == expected
+        # A check of every organization finds it too.
+        assert [item for item in report(None) if item.run_id == who] == expected
+
+    # The run itself no longer what its events make it.
+    with undone(session):
+        session.execute(
+            update(Run)
+            .where(Run.id == run.id)
+            .values(outcome="succeeded", started_at=datetime(2026, 11, 7, tzinfo=UTC))
+        )
+        assert report() == [
+            Difference(
+                who,
+                None,
+                "run started",
+                "2026-11-06T12:00:00.300000+00:00",
+                "2026-11-07T00:00:00+00:00",
+            ),
+            Difference(who, None, "run outcome", "unverified", "succeeded"),
+        ]
+
+    assert report() == []
