@@ -15,6 +15,7 @@ uv run python -m forgemind_api migrate   # bring FORGEMIND_DATABASE_URL to the c
 uv run python -m forgemind_api seed      # development and test only: a known organization and fixed tokens
 uv run python -m forgemind_api worker    # execute the runs and index the repositories on the queue at FORGEMIND_REDIS_URL
 uv run python -m forgemind_api sweeper   # queue again what lost its worker or its message
+uv run python -m forgemind_api usage-check   # compare the usage ledger with the events it was written from
 ```
 
 The worker and the seed clone repositories, so they need `git` and
@@ -108,6 +109,47 @@ against real git, the latter over git's own HTTP server.
 `tests/test_inspection.py` covers what is read, `tests/test_indexing.py` the
 claim and its outcomes, and `tests/test_indexing_recovery.py` real workers
 killed while indexing.
+
+## Usage
+
+Usage is what the events say was used. Recording an event also enters what
+it measures in a ledger, in the same transaction: the tokens a model call
+read and wrote, the sandbox time, processor time and memory between two
+resource samples, and the time a retried attempt took
+(`src/forgemind_api/metering.py`, the same arithmetic as
+`packages/contract/src/metering.ts`). `GET /usage` adds the ledger up for
+the caller's organization over the calendar month so far, in UTC, and counts
+the runs that started in it by how they ended.
+
+Cost is an estimate or it is unavailable. It is never reported as actual:
+the service reads no bill. `FORGEMIND_PRICES` sets what usage is taken to
+cost, in US dollars per million tokens and per sandbox hour. No rate is built
+in. The names and numbers below are made up to show the shape:
+
+```
+FORGEMIND_PRICES='{"tokens": {"example/model-a": {"input": 1.5, "output": 6}}, "sandbox_hour": 0.25}'
+```
+
+When something used in the period has no price, the cost is `unavailable`
+and the reason names what is missing; a partial sum is not shown as the
+cost. Quotas report what was used with no maximum: nothing on this server
+limits an organization yet, only a task's own budget.
+
+`usage-check` measures every run's events again and compares the result
+with the ledger, entry by entry, and with the start and outcome each run is
+counted by. It prints one line of JSON and exits 1 if they disagree:
+
+```
+{"runs": 2, "events": 4, "records": 0, "agrees": true, "differences": []}
+```
+
+No stage has an executor yet, so a run on this server calls no model and
+starts no sandbox: its events measure nothing, the ledger stays empty and
+the figures are run counts beside zeros. `tests/test_usage.py` covers the
+sums with recorded model calls and samples, `tests/test_metering.py` holds
+the arithmetic to what the contract's comes to for every scenario the dev
+API plays, and the conformance harness adds up the events a service serves
+and holds `GET /usage` to them.
 
 ## Compose
 
