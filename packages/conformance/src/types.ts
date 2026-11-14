@@ -21,6 +21,15 @@ export type Response = {
   text: string;
 };
 
+/**
+ * Asks the service something else and returns its answer, which must be a
+ * 200 that keeps the contract. Throws when it is not.
+ */
+export type Ask = (key: EndpointKey, request?: Request) => Promise<unknown>;
+
+/** What holding an answer against the rest of the service came to. */
+export type Held = { agrees: boolean; note: string };
+
 export type Probe = {
   key: EndpointKey;
   /** Builds the request from what earlier probes learned. */
