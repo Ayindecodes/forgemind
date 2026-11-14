@@ -1,5 +1,6 @@
 import {
   ApiError,
+  buildPath,
   DATA_SOURCE_HEADER,
   endpoints,
   type DataSource,
@@ -10,7 +11,13 @@ import {
 import { call, firstEvent, redirectParams, type Fetch } from './client';
 import { isImplemented, readImplemented, type Implemented } from './openapi';
 import { plan } from './plan';
-import { Blocked, type Context, type Probe, type Result } from './types';
+import {
+  Blocked,
+  type Ask,
+  type Context,
+  type Probe,
+  type Result,
+} from './types';
 
 export type Options = {
   baseUrl: string;
@@ -20,7 +27,21 @@ export type Options = {
   /** Treat every endpoint as implemented, ignoring any OpenAPI document. */
   allImplemented?: boolean;
   probes?: Probe[];
+  /** How long to wait before asking again for an answer still settling. */
+  pauseMs?: number;
 };
+
+/** How many times an answer that has not settled is asked for again. */
+const PATIENCE = 40;
+
+/** A contract's first complaints about an answer, each with where it is. */
+const complaints = (error: {
+  issues: { path: PropertyKey[]; message: string }[];
+}) =>
+  error.issues
+    .slice(0, 3)
+    .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+    .join('; ');
 
 export type Summary = {
   results: Result[];
@@ -100,6 +121,30 @@ export async function run(options: Options): Promise<Summary> {
     : await readImplemented(fetchImpl, options.baseUrl);
   const context: Context = {};
   const results: Result[] = [];
+  const pause = () =>
+    new Promise((resolve) => setTimeout(resolve, options.pauseMs ?? 250));
+
+  const ask: Ask = async (key, request = {}) => {
+    const asked = endpoints[key];
+    const answer = await call(
+      fetchImpl,
+      options.baseUrl,
+      asked,
+      request,
+      options.cookie,
+    );
+    const where = `${asked.method} ${buildPath(asked.path, request.params)}`;
+    if (answer.status !== 200) {
+      throw new Error(`${where} answered ${answer.status}`);
+    }
+    const kept = asked.response.safeParse(answer.data);
+    if (!kept.success) {
+      throw new Error(
+        `${where} breaks the contract: ${complaints(kept.error)}`,
+      );
+    }
+    return kept.data;
+  };
 
   for (const probe of probes) {
     const endpoint: Endpoint = endpoints[probe.key];
@@ -143,10 +188,10 @@ export async function run(options: Options): Promise<Summary> {
       let response = await send();
       for (
         let attempt = 0;
-        probe.settled && !probe.settled(response.data) && attempt < 40;
+        probe.settled && !probe.settled(response.data) && attempt < PATIENCE;
         attempt += 1
       ) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await pause();
         response = await send();
       }
       const expected = probe.status ?? 200;
@@ -173,21 +218,38 @@ export async function run(options: Options): Promise<Summary> {
       }
       const parsed = endpoint.response.safeParse(response.data);
       if (!parsed.success) {
-        const issues = parsed.error.issues
-          .slice(0, 3)
-          .map(
-            (issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`,
-          )
-          .join('; ');
         results.push({
           ...base,
           verdict: 'fail',
-          note: `response breaks the contract: ${issues}`,
+          note: `response breaks the contract: ${complaints(parsed.error)}`,
         });
         continue;
       }
+      let note = `${response.status}`;
+      if (probe.hold) {
+        let held = await probe.hold(parsed.data, ask);
+        // A service still at work may have moved on between two answers, so
+        // a disagreement is believed only once it outlasts asking again.
+        for (
+          let attempt = 0;
+          !held.agrees && attempt < PATIENCE;
+          attempt += 1
+        ) {
+          await pause();
+          held = await probe.hold(await ask(probe.key, request), ask);
+        }
+        if (!held.agrees) {
+          results.push({
+            ...base,
+            verdict: 'fail',
+            note: `does not agree with the rest of the service: ${held.note}`,
+          });
+          continue;
+        }
+        note = `${note}, ${held.note}`;
+      }
       probe.after?.(context, parsed.data, response);
-      results.push({ ...base, verdict: 'pass', note: `${response.status}` });
+      results.push({ ...base, verdict: 'pass', note });
     } catch (error) {
       if (error instanceof Blocked) {
         results.push({ ...base, verdict: 'blocked', note: error.message });

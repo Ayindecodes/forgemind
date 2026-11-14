@@ -28,4 +28,10 @@ describe('the plan', () => {
       expect(index(read)).toBeGreaterThan(index('cancelTask'));
     }
   });
+
+  it('holds the usage against the events once it has made a run of its own', () => {
+    const index = (key: string) => plan.findIndex((probe) => probe.key === key);
+    expect(index('usage')).toBeGreaterThan(index('cancelTask'));
+    expect(plan[index('usage')]?.hold).toBeTypeOf('function');
+  });
 });

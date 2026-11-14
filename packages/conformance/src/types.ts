@@ -42,6 +42,11 @@ export type Probe = {
   settled?: (data: unknown) => boolean;
   /** Remembers what later probes need. */
   after?: (context: Context, data: unknown, response: Response) => void;
+  /**
+   * Holds the answer against the rest of what the service says, asking it
+   * whatever that takes.
+   */
+  hold?: (data: unknown, ask: Ask) => Promise<Held>;
 };
 
 export type Verdict = 'pass' | 'fail' | 'unimplemented' | 'blocked';

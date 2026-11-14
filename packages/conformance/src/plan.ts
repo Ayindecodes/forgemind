@@ -3,9 +3,11 @@ import type {
   Notification,
   Repository,
   Task,
+  UsageSummary,
 } from '@forgemind/contract';
 
 import { Blocked, type Context, type Probe } from './types';
+import { usageAgainstEvents } from './usage';
 
 /*
  * Every endpoint in the contract, in an order where each probe can use what
@@ -111,7 +113,6 @@ export const plan: Probe[] = [
   },
   { key: 'findings', build: () => ({ query: { limit: '50' } }) },
   { key: 'pullRequests', build: () => ({ query: { limit: '50' } }) },
-  { key: 'usage', build: () => ({}) },
   {
     key: 'notifications',
     build: () => ({}),
@@ -188,6 +189,13 @@ export const plan: Probe[] = [
       params: { id: need(context, 'createdRunId', "the created task's run") },
       query: { after: '0' },
     }),
+  },
+  // Asked once the organization has a run of this harness's own making, so
+  // that there is something to add up on a service that began with none.
+  {
+    key: 'usage',
+    build: () => ({}),
+    hold: (data, ask) => usageAgainstEvents(data as UsageSummary, ask),
   },
   {
     key: 'connectRepository',
