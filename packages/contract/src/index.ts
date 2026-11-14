@@ -5,6 +5,7 @@ export * from './diff';
 export * from './events';
 export * from './findings';
 export * from './health';
+export * from './metering';
 export * from './notifications';
 export * from './organizations';
 export * from './pull-requests';
