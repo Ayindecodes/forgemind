@@ -375,5 +375,117 @@
     "startedAt": "2026-11-06T12:00:00.300Z",
     "finishedAt": "2026-11-06T12:00:23.100Z",
     "error": null
+  },
+  "measures": [
+    {
+      "kind": "tokens",
+      "quantity": 18400,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 12,
+      "at": "2026-11-06T12:00:08.700Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 1250,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 12,
+      "at": "2026-11-06T12:00:08.700Z"
+    },
+    {
+      "kind": "cpu_seconds",
+      "quantity": 2.1,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 14,
+      "at": "2026-11-06T12:00:10.000Z"
+    },
+    {
+      "kind": "sandbox_seconds",
+      "quantity": 9,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 14,
+      "at": "2026-11-06T12:00:10.000Z"
+    },
+    {
+      "kind": "memory_mb_hours",
+      "quantity": 0.775,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 14,
+      "at": "2026-11-06T12:00:10.000Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 22900,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 18,
+      "at": "2026-11-06T12:00:14.300Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 2140,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 18,
+      "at": "2026-11-06T12:00:14.300Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 33700,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 26,
+      "at": "2026-11-06T12:00:21.700Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 2050,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 26,
+      "at": "2026-11-06T12:00:21.700Z"
+    }
+  ],
+  "usage": {
+    "tokens": [
+      {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "input": 41300,
+        "output": 3390
+      },
+      {
+        "provider": "anthropic",
+        "model": "claude-sonnet-5-5",
+        "input": 33700,
+        "output": 2050
+      }
+    ],
+    "sandboxSeconds": 9,
+    "cpuSeconds": 2.1,
+    "memoryMbHours": 0.775,
+    "retryOverheadSeconds": 0
   }
 }

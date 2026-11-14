@@ -1020,5 +1020,297 @@
     "startedAt": "2026-11-06T12:00:00.300Z",
     "finishedAt": null,
     "error": null
+  },
+  "measures": [
+    {
+      "kind": "tokens",
+      "quantity": 18400,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 12,
+      "at": "2026-11-06T12:00:08.700Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 1250,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 12,
+      "at": "2026-11-06T12:00:08.700Z"
+    },
+    {
+      "kind": "cpu_seconds",
+      "quantity": 2.1,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 14,
+      "at": "2026-11-06T12:00:10.000Z"
+    },
+    {
+      "kind": "sandbox_seconds",
+      "quantity": 9,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 14,
+      "at": "2026-11-06T12:00:10.000Z"
+    },
+    {
+      "kind": "memory_mb_hours",
+      "quantity": 0.775,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 14,
+      "at": "2026-11-06T12:00:10.000Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 22900,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 18,
+      "at": "2026-11-06T12:00:14.300Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 2140,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 18,
+      "at": "2026-11-06T12:00:14.300Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 47500,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 25,
+      "at": "2026-11-06T12:00:22.300Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 6820,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 25,
+      "at": "2026-11-06T12:00:22.300Z"
+    },
+    {
+      "kind": "cpu_seconds",
+      "quantity": 3.4,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 27,
+      "at": "2026-11-06T12:00:23.700Z"
+    },
+    {
+      "kind": "sandbox_seconds",
+      "quantity": 14,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 27,
+      "at": "2026-11-06T12:00:23.700Z"
+    },
+    {
+      "kind": "memory_mb_hours",
+      "quantity": 1.9911,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 27,
+      "at": "2026-11-06T12:00:23.700Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 11200,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 36,
+      "at": "2026-11-06T12:00:30.200Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 910,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 36,
+      "at": "2026-11-06T12:00:30.200Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 53700,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 44,
+      "at": "2026-11-06T12:00:38.800Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 6820,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 44,
+      "at": "2026-11-06T12:00:38.800Z"
+    },
+    {
+      "kind": "retry_overhead_seconds",
+      "quantity": 7.3,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 45,
+      "at": "2026-11-06T12:00:39.700Z"
+    },
+    {
+      "kind": "cpu_seconds",
+      "quantity": 3.4,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 46,
+      "at": "2026-11-06T12:00:40.200Z"
+    },
+    {
+      "kind": "sandbox_seconds",
+      "quantity": 14,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 46,
+      "at": "2026-11-06T12:00:40.200Z"
+    },
+    {
+      "kind": "memory_mb_hours",
+      "quantity": 1.9911,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 46,
+      "at": "2026-11-06T12:00:40.200Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 9600,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 54,
+      "at": "2026-11-06T12:00:46.400Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 480,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 54,
+      "at": "2026-11-06T12:00:46.400Z"
+    },
+    {
+      "kind": "retry_overhead_seconds",
+      "quantity": 6.1,
+      "direction": null,
+      "provider": null,
+      "model": null,
+      "runId": "run-1",
+      "seq": 55,
+      "at": "2026-11-06T12:00:47.000Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 27500,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 62,
+      "at": "2026-11-06T12:00:54.900Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 1360,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "runId": "run-1",
+      "seq": 62,
+      "at": "2026-11-06T12:00:54.900Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 12800,
+      "direction": "input",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 76,
+      "at": "2026-11-06T12:01:05.600Z"
+    },
+    {
+      "kind": "tokens",
+      "quantity": 890,
+      "direction": "output",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "runId": "run-1",
+      "seq": 76,
+      "at": "2026-11-06T12:01:05.600Z"
+    }
+  ],
+  "usage": {
+    "tokens": [
+      {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "input": 68800,
+        "output": 4750
+      },
+      {
+        "provider": "anthropic",
+        "model": "claude-sonnet-5-5",
+        "input": 134800,
+        "output": 15920
+      }
+    ],
+    "sandboxSeconds": 37,
+    "cpuSeconds": 8.9,
+    "memoryMbHours": 4.7572,
+    "retryOverheadSeconds": 13.4
   }
 }

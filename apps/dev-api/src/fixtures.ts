@@ -1,14 +1,30 @@
-import { runFromEvents, type Event, type Run } from '@forgemind/contract';
+import {
+  meterRun,
+  runFromEvents,
+  totalUsage,
+  type Event,
+  type Metered,
+  type Run,
+  type Usage,
+} from '@forgemind/contract';
 
 import { scenarios, type ScenarioName } from './scenarios';
 
 /*
- * Each scripted scenario as a full event log and the run state the contract's
- * reducer folds it into. The real API folds the same logs in Python and must
- * arrive at the same state; apps/api/tests/fixtures/runs holds these as JSON.
+ * Each scripted scenario as a full event log, the run state the contract's
+ * reducer folds it into, and what the contract measures the run to have
+ * used. The real API folds and measures the same logs in Python and must
+ * arrive at the same state and the same figures;
+ * apps/api/tests/fixtures/runs holds these as JSON.
  */
 
-export type RunFixture = { scenario: ScenarioName; events: Event[]; run: Run };
+export type RunFixture = {
+  scenario: ScenarioName;
+  events: Event[];
+  run: Run;
+  measures: Metered[];
+  usage: Usage;
+};
 
 const STARTED_AT = Date.parse('2026-11-06T12:00:00.000Z');
 
@@ -29,10 +45,13 @@ export function runFixture(name: ScenarioName): RunFixture {
         ...step.event,
       }) as Event,
   );
+  const measures = meterRun(events);
   return {
     scenario: name,
     events,
     run: runFromEvents('run-1', 'task-1', 'abc1234', events),
+    measures,
+    usage: totalUsage(measures),
   };
 }
 
