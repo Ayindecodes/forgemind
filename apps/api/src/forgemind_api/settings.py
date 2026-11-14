@@ -6,9 +6,11 @@ message that names the variable, instead of failing at first use.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
-from typing import Literal
+from decimal import Decimal
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -23,6 +25,40 @@ Environment = Literal["development", "test", "staging", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
 ENV_PREFIX = "FORGEMIND_"
+
+
+class TokenPrice(BaseModel):
+    """US dollars for a million tokens read by a model, and for a million
+    written by it."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    input: Decimal = Field(ge=0)
+    output: Decimal = Field(ge=0)
+
+
+class Prices(BaseModel):
+    """What usage is taken to cost when a cost is estimated. Nothing has a
+    price unless one is set here: no rate is built in, since nobody's rates
+    are this service's to assume."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    # By "provider/model", as model calls name them.
+    tokens: dict[str, TokenPrice] = Field(default_factory=dict[str, TokenPrice])
+    # US dollars for an hour of sandbox time.
+    sandbox_hour: Decimal | None = Field(default=None, ge=0)
+
+    @field_validator("tokens")
+    @classmethod
+    def _named_by_provider_and_model(
+        cls, value: dict[str, TokenPrice]
+    ) -> dict[str, TokenPrice]:
+        for name in value:
+            provider, _, model = name.partition("/")
+            if not provider or not model:
+                raise ValueError(f"{name!r} must be written provider/model")
+        return value
 
 
 class Settings(BaseModel):
@@ -81,6 +117,22 @@ class Settings(BaseModel):
     # which the simulated GitHub offers beside its own made-up ones. It is
     # how a real repository is inspected where no GitHub App is registered.
     local_repositories: str | None = None
+    # JSON: {"tokens": {"provider/model": {"input": 0, "output": 0}},
+    # "sandbox_hour": 0}, in US dollars per million tokens and per hour. The
+    # cost of usage is estimated from these, and reported as unavailable for
+    # anything used that has no price here.
+    prices: Prices = Prices()
+
+    @field_validator("prices", mode="before")
+    @classmethod
+    def _prices_from_json(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        try:
+            # Decimals from the digits as written, not by way of a float.
+            return json.loads(value, parse_float=Decimal)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"must be JSON ({error.msg})") from None
 
     @field_validator("web_origin", "otel_endpoint", "api_origin")
     @classmethod

@@ -246,9 +246,12 @@ def worker_process(
         for key, value in os.environ.items()
         if not key.startswith(ENV_PREFIX)
     }
-    for name, value in settings.model_dump().items():
+    for name, value in settings.model_dump(mode="json").items():
         if value is not None:
-            environment[f"{ENV_PREFIX}{name.upper()}"] = str(value)
+            # A setting with parts of its own is written as JSON.
+            environment[f"{ENV_PREFIX}{name.upper()}"] = (
+                json.dumps(value) if isinstance(value, dict) else str(value)
+            )
     environment.update(extra)
     with log.open("ab") as output:
         process = subprocess.Popen(
