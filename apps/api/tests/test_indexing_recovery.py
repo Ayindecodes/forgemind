@@ -24,11 +24,13 @@ from forgemind_api.models import Repository
 from forgemind_api.queue import INDEX_REPOSITORY
 from forgemind_api.settings import Settings
 from forgemind_api.simulated_repositories import materialise
+from forgemind_api.telemetry import REQUEST_ID, TRACEPARENT
 from tests.gitrepos import running_under
 from tests.workers import (
     ask_to_stop,
     kill,
     logged,
+    queued_headers,
     queued_messages,
     settings_for,
     wait_for,
@@ -104,6 +106,7 @@ def test_the_shipped_worker_indexes_a_repository_connected_through_the_api(
     log = tmp_path / "worker.log"
     repository_id = connect(client)
     assert queued_messages(redis_url) == [(INDEX_REPOSITORY, [repository_id])]
+    [carrying] = queued_headers(redis_url)
     waiting = client.get(f"/repositories/{repository_id}/analysis", headers=OWNER)
     assert waiting.status_code == 404
     with worker_process(settings, log, "forgemind_api", "worker") as worker:
@@ -151,6 +154,16 @@ def test_the_shipped_worker_indexes_a_repository_connected_through_the_api(
     )
     assert ended["files"] > 0 and ended["bytes"] > 0
     assert handled["verdict"] == "indexed"
+    # Everything the worker said about it leads back to the request that
+    # connected the repository: its id, and the trace it was served in.
+    asked_in = carrying[TRACEPARENT].split("-")[1]
+    for line in (ended, handled):
+        assert (line["request_id"], line["trace_id"]) == (
+            carrying[REQUEST_ID],
+            asked_in,
+        )
+    assert len(carrying[REQUEST_ID]) > 0 and len(asked_in) == 32
+    assert isinstance(handled["duration_ms"], int)
     assert attempts(sessions, repository_id) == (1, None)
     assert os.listdir(root) == []
     assert queued_messages(redis_url) == []

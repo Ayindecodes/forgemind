@@ -13,20 +13,41 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
-from forgemind_api.app import create_app
+from forgemind_api.app import REQUEST_ID_HEADER, create_app
 from forgemind_api.queue import EXECUTE_RUN, CeleryDispatcher, make_publisher
 from forgemind_api.runstate import run_from_events
 from forgemind_api.settings import Settings
-from forgemind_api.worker import INTERRUPTED, run_sweeper, sweep
+from forgemind_api.telemetry import (
+    JOB_OUTCOME,
+    JOBS,
+    REQUEST_ID,
+    REQUEST_ID_ATTRIBUTE,
+)
+from forgemind_api.worker import (
+    INTERRUPTED,
+    SWEEP_INDEXING,
+    SWEEP_RUNS,
+    run_sweeper,
+    sweep,
+)
+from tests.observing import (
+    CALLER_SPAN_ID,
+    TRACE_ID,
+    TRACEPARENT,
+    Collector,
+    collector,
+)
 from tests.workers import (
     ask_to_stop,
     events_of,
     kill,
     kinds,
     logged,
+    queued_headers,
     queued_messages,
     queued_run,
     run_of,
@@ -237,8 +258,22 @@ def test_a_stage_that_finished_before_its_worker_died_is_not_run_again(
 def test_the_shipped_worker_takes_a_task_created_through_the_api(
     settings: Settings, tmp_path: Path
 ) -> None:
+    """And what the two processes say about it, in their logs and to a
+    collector, is one story: the request, then the job it led to."""
     log = tmp_path / "worker.log"
-    app = create_app(settings)
+    with collector() as receiving:
+        told = settings.model_copy(update={"otel_endpoint": receiving.url})
+        app = create_app(told)
+        try:
+            taken_by_the_shipped_worker(app, told, log, receiving)
+        finally:
+            app.state.telemetry.shutdown()
+            app.state.engine.dispose()
+
+
+def taken_by_the_shipped_worker(
+    app: FastAPI, settings: Settings, log: Path, receiving: Collector
+) -> None:
     client = TestClient(app)
     try:
         repositories = client.get("/repositories", headers=OWNER).json()["items"]
@@ -252,7 +287,11 @@ def test_the_shipped_worker_takes_a_task_created_through_the_api(
                     "request": "Stop retrying past the budget the task allows.",
                     "category": "fix_bug",
                 },
-                headers=OWNER,
+                headers={
+                    **OWNER,
+                    REQUEST_ID_HEADER: "request-7",
+                    "traceparent": TRACEPARENT,
+                },
             )
             assert created.status_code == 201, created.text
             task: dict[str, Any] = created.json()
@@ -277,12 +316,48 @@ def test_the_shipped_worker_takes_a_task_created_through_the_api(
                 "the worker to log the delivery",
                 describe=log.read_text,
             )
-            assert (handled()[0]["run_id"], handled()[0]["verdict"]) == (
-                task["runId"],
-                "executed",
+            [line] = handled()
+            assert (line["run_id"], line["verdict"]) == (task["runId"], "executed")
+            # The worker's line is found from the request that asked for the
+            # run, by its id or by its trace.
+            assert (line["request_id"], line["trace_id"]) == ("request-7", TRACE_ID)
+            assert isinstance(line["duration_ms"], int)
+
+            # The worker has sent its job before it takes another.
+            counted = ("forgemind-worker", JOBS, "job", "outcome")
+            wait_for(
+                lambda: receiving.points(*counted) != {},
+                "the worker to send what it recorded",
+                describe=log.read_text,
             )
+            assert receiving.points(*counted) == {(EXECUTE_RUN, "executed"): 1}
+            [job] = receiving.spans("forgemind-worker")
+            assert (job.name, job.kind) == (EXECUTE_RUN, "consumer")
+            assert (job.trace_id, job.span_id) == (TRACE_ID, line["span_id"])
+            assert job.attributes["forgemind.run_id"] == task["runId"]
+            assert job.attributes[JOB_OUTCOME] == "executed"
             # Told to stop the way a container runtime tells it, it stops.
             assert ask_to_stop(worker) == 0
+
+        # The request that asked for the run is the job's parent, in the
+        # trace its own caller started.
+        app.state.telemetry.flush()
+        [asked] = [
+            span
+            for span in receiving.spans("forgemind-api")
+            if span.name == "POST /tasks"
+        ]
+        assert (asked.kind, asked.trace_id, asked.parent_id) == (
+            "server",
+            TRACE_ID,
+            CALLER_SPAN_ID,
+        )
+        assert asked.attributes[REQUEST_ID_ATTRIBUTE] == "request-7"
+        assert job.parent_id == asked.span_id
+        requests = receiving.points(
+            "forgemind-api", "http.server.duration", "http.target", "http.status_code"
+        )
+        assert requests[("/tasks", 201)] == 1
         finished = run()
         events = client.get(f"/runs/{task['runId']}/events", headers=OWNER).json()
         assert kinds(events) == ["run.started", "run.finished"]
@@ -295,7 +370,7 @@ def test_the_shipped_worker_takes_a_task_created_through_the_api(
             "failed"
         )
     finally:
-        app.state.engine.dispose()
+        client.close()
 
 
 def test_the_sweeper_process_queues_what_never_reached_the_queue_and_stops_when_asked(
@@ -304,16 +379,38 @@ def test_the_sweeper_process_queues_what_never_reached_the_queue_and_stops_when_
     log = tmp_path / "sweeper.log"
     run_id = queued_run(sessions)
     assert queued_messages(redis_url) == []
-    with worker_process(settings, log, "forgemind_api", "sweeper") as sweeper:
-        wait_for(
-            lambda: queued_messages(redis_url) == [(EXECUTE_RUN, [str(run_id)])],
-            "the sweeper to queue the run",
-            describe=log.read_text,
-        )
-        assert ask_to_stop(sweeper) == 0
+    with collector() as receiving:
+        told = settings.model_copy(update={"otel_endpoint": receiving.url})
+        with worker_process(told, log, "forgemind_api", "sweeper") as sweeper:
+            wait_for(
+                lambda: queued_messages(redis_url) == [(EXECUTE_RUN, [str(run_id)])],
+                "the sweeper to queue the run",
+                describe=log.read_text,
+            )
+            assert ask_to_stop(sweeper) == 0
+        # Stopped, it has sent what it recorded.
+        sweeps = receiving.spans("forgemind-sweeper")
+        counted = receiving.points("forgemind-sweeper", JOBS, "job", "outcome")
     assert run_of(sessions, run_id).dispatched_at is not None
-    assert [(r["message"], r.get("queued")) for r in logged(log)] == [
+    lines = logged(log)
+    # The sweeps that found nothing to do said nothing.
+    assert [(r["message"], r.get("queued")) for r in lines] == [
         ("sweeper started", None),
         ("swept", 1),
         ("sweeper stopped", None),
     ]
+    assert isinstance(lines[1]["duration_ms"], int)
+
+    # Each sweep is a job, and the one that queued the run is the trace the
+    # message it queued carries on to whichever worker takes it.
+    assert {span.name for span in sweeps} == {SWEEP_RUNS, SWEEP_INDEXING}
+    assert {span.kind for span in sweeps} == {"internal"}
+    [busy] = [span for span in sweeps if span.attributes[JOB_OUTCOME] == "swept"]
+    assert (busy.name, busy.attributes["forgemind.sweep.queued"]) == (SWEEP_RUNS, 1)
+    assert (busy.trace_id, busy.span_id) == (lines[1]["trace_id"], lines[1]["span_id"])
+    [carrying] = queued_headers(redis_url)
+    assert carrying["traceparent"].split("-")[1:3] == [busy.trace_id, busy.span_id]
+    assert REQUEST_ID not in carrying
+    assert counted[(SWEEP_RUNS, "swept")] == 1
+    assert counted[(SWEEP_INDEXING, "quiet")] >= 1
+    assert sum(counted.values()) == len(sweeps)
