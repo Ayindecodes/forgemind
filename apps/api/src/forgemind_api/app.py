@@ -30,7 +30,7 @@ from forgemind_api.routes import repositories as repository_routes
 from forgemind_api.routes import tasks as task_routes
 from forgemind_api.routes import usage as usage_routes
 from forgemind_api.settings import Settings, load_settings
-from forgemind_api.telemetry import configure_telemetry
+from forgemind_api.telemetry import Telemetry
 
 log = logging.getLogger("forgemind_api")
 
@@ -54,12 +54,15 @@ class Health(BaseModel):
     checks: dict[str, Literal["ok", "unreachable"]]
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, telemetry: Telemetry | None = None
+) -> FastAPI:
     """Build the application from the given settings, or from the environment."""
     settings = settings or load_settings()
     configure_logging(settings.log_level)
     app = FastAPI(title="ForgeMind API", version=settings.version)
     app.state.settings = settings
+    app.state.telemetry = telemetry or Telemetry(settings, "forgemind-api")
 
     app.add_middleware(
         CORSMiddleware,
@@ -158,7 +161,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             checks=checks,
         )
 
-    configure_telemetry(app, settings)
+    # Last, so the span is around everything above and every line a request
+    # logs falls inside it.
+    app.state.telemetry.instrument(app)
     return app
 
 
