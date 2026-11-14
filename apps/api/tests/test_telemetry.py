@@ -1,21 +1,34 @@
-"""Every request leaves a span, a count, a time and a log line that leads back
-to the span. Read here from the process that recorded them."""
+"""Every request and every job leaves a span, a count, a time and a log line
+that leads back to the span. Read here from the process that recorded them,
+and from what a process sends to a collector."""
 
 from __future__ import annotations
 
+import socket
+import time
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from opentelemetry.trace import SpanKind, StatusCode
 
 from forgemind_api.app import REQUEST_ID_HEADER, create_app
+from forgemind_api.queue import EXECUTE_RUN
 from forgemind_api.settings import Settings
-from forgemind_api.telemetry import REQUEST_ID_ATTRIBUTE, Telemetry
+from forgemind_api.telemetry import (
+    JOB_DURATION,
+    JOB_OUTCOME,
+    JOBS,
+    REQUEST_ID_ATTRIBUTE,
+    Telemetry,
+)
 from tests.observing import (
     CALLER_SPAN_ID,
     TRACE_ID,
     TRACEPARENT,
     Observed,
+    SentSpan,
+    collector,
     log_lines,
     observed,
     parent_id_of,
@@ -141,3 +154,94 @@ def test_each_application_records_into_its_own_telemetry() -> None:
     assert other.points(REQUESTS) == {}
     # An application nobody hands telemetry makes its own.
     assert isinstance(create_app(SETTINGS).state.telemetry, Telemetry)
+
+
+# --- jobs
+
+
+def test_a_job_that_raises_is_an_error_everywhere_it_is_recorded() -> None:
+    seen = observed(SETTINGS, "forgemind-worker")
+    with (
+        log_lines() as lines,
+        pytest.raises(RuntimeError),
+        seen.telemetry.job(EXECUTE_RUN) as job,
+    ):
+        job.outcome = "executed"
+        raise RuntimeError("the database went away")
+    [span] = seen.spans()
+    assert dict(span.attributes or {})[JOB_OUTCOME] == "error"
+    assert span.status.status_code is StatusCode.ERROR
+    [event] = span.events
+    assert dict(event.attributes or {})["exception.message"] == (
+        "the database went away"
+    )
+    assert seen.points(JOBS, "job", "outcome") == {(EXECUTE_RUN, "error"): 1}
+    assert seen.points(JOB_DURATION, "job", "outcome") == {(EXECUTE_RUN, "error"): 1}
+    [line] = lines
+    assert (line["level"], line["message"], line["job"], line["error"]) == (
+        "ERROR",
+        "job failed",
+        EXECUTE_RUN,
+        "RuntimeError",
+    )
+    assert (line["trace_id"], line["span_id"]) == (trace_id_of(span), span_id_of(span))
+    assert isinstance(line["duration_ms"], int)
+
+
+# --- sending
+
+
+def test_with_an_endpoint_set_spans_and_metrics_are_sent_to_it() -> None:
+    with collector() as receiving:
+        settings = Settings(version="1.2.3", otel_endpoint=receiving.url)
+        telemetry = Telemetry(settings, "forgemind-worker")
+        try:
+            with telemetry.job(
+                EXECUTE_RUN, {"traceparent": TRACEPARENT}, {"forgemind.run_id": "run-1"}
+            ) as job:
+                job.outcome = "executed"
+            assert receiving.spans() == []
+            telemetry.flush()
+            [span] = receiving.spans()
+            assert span == SentSpan(
+                "forgemind-worker",
+                EXECUTE_RUN,
+                "consumer",
+                TRACE_ID,
+                span.span_id,
+                CALLER_SPAN_ID,
+                {"forgemind.run_id": "run-1", JOB_OUTCOME: "executed"},
+            )
+            sent = ("forgemind-worker", JOBS, "job", "outcome")
+            assert receiving.points(*sent) == {(EXECUTE_RUN, "executed"): 1}
+            assert receiving.points(
+                "forgemind-worker", JOB_DURATION, "job", "outcome"
+            ) == {(EXECUTE_RUN, "executed"): 1}
+
+            with telemetry.job(EXECUTE_RUN, {}) as job:
+                job.outcome = "executed"
+            telemetry.flush()
+            assert len(receiving.spans("forgemind-worker")) == 2
+            assert receiving.points(*sent) == {(EXECUTE_RUN, "executed"): 2}
+            assert receiving.spans("forgemind-api") == []
+        finally:
+            telemetry.shutdown()
+
+
+def test_a_collector_that_is_not_there_costs_a_job_a_bounded_wait_and_nothing_else(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("forgemind_api.telemetry.EXPORT_SECONDS", 1)
+    with socket.socket() as listening:
+        # A port nothing answers on: bound, and never listened on.
+        listening.bind(("127.0.0.1", 0))
+        endpoint = f"http://127.0.0.1:{listening.getsockname()[1]}"
+        telemetry = Telemetry(Settings(otel_endpoint=endpoint), "forgemind-worker")
+        try:
+            started = time.monotonic()
+            with telemetry.job(EXECUTE_RUN, {}) as job:
+                job.outcome = "executed"
+            telemetry.flush()
+            assert time.monotonic() - started < 6
+        finally:
+            telemetry.shutdown()

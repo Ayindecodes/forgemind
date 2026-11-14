@@ -4,13 +4,17 @@ is set up by an import and a test can read what was recorded. Everything is
 recorded always and sent only where an OTLP endpoint is configured, so turning
 observability on is configuration.
 
-A request is traced and timed by the FastAPI instrumentation."""
+A request is traced and timed by the FastAPI instrumentation. A job, which is
+a delivery a worker handles or a sweep, is traced and counted here."""
 
 from __future__ import annotations
 
 import logging
+import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Generator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import Literal
 
 from fastapi import FastAPI
@@ -23,6 +27,10 @@ from opentelemetry.sdk.metrics.export import (
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import Span, SpanKind
+from opentelemetry.trace.propagation.tracecontext import (
+    TraceContextTextMapPropagator,
+)
 
 from forgemind_api.settings import Settings
 
@@ -30,12 +38,34 @@ log = logging.getLogger("forgemind_api.telemetry")
 
 Service = Literal["forgemind-api", "forgemind-worker", "forgemind-sweeper"]
 
+JOBS = "forgemind.jobs"
+JOB_DURATION = "forgemind.job.duration"
+JOB_OUTCOME = "forgemind.job.outcome"
 # On a request's span, the id its log lines and its response carry.
 REQUEST_ID_ATTRIBUTE = "forgemind.request_id"
 
 # The longest one export may take. Telemetry is never worth more of a job's
 # time, or a request's, than this.
 EXPORT_SECONDS = 5
+
+_PROPAGATOR = TraceContextTextMapPropagator()
+
+
+@dataclass
+class Job:
+    """One piece of background work, while it is being done."""
+
+    name: str
+    span: Span
+    # What it came to. Whoever does the work says; "error" if it raised.
+    outcome: str = "ok"
+    started: float = field(default_factory=time.monotonic)
+
+    def seconds(self) -> float:
+        return time.monotonic() - self.started
+
+    def elapsed_ms(self) -> int:
+        return round(self.seconds() * 1000)
 
 
 class Telemetry:
@@ -88,6 +118,18 @@ class Telemetry:
                 )
             )
         self.meter_provider = MeterProvider(metric_readers=readers, resource=resource)
+        self._tracer = self.tracer_provider.get_tracer("forgemind_api")
+        meter = self.meter_provider.get_meter("forgemind_api")
+        self._jobs = meter.create_counter(
+            JOBS,
+            unit="{job}",
+            description="Background jobs handled, by job and by what they came to.",
+        )
+        self._job_seconds = meter.create_histogram(
+            JOB_DURATION,
+            unit="s",
+            description="How long a background job took.",
+        )
 
     def instrument(self, app: FastAPI) -> None:
         """Traces and times every request `app` serves: one span each."""
@@ -99,6 +141,45 @@ class Telemetry:
             # an event stream is nothing but messages.
             exclude_spans=["receive", "send"],
         )
+
+    @contextmanager
+    def job(
+        self,
+        name: str,
+        carrier: Mapping[str, str] | None = None,
+        attributes: Mapping[str, str] | None = None,
+    ) -> Generator[Job]:
+        """A span around one job, and its count and its time once it ends,
+        under what it came to. A job taken from the queue gives the `carrier`
+        its message came with, and continues the trace the message was sent
+        in; a job this process set itself gives none."""
+        delivered = carrier is not None
+        with self._tracer.start_as_current_span(
+            name,
+            context=_PROPAGATOR.extract(carrier) if delivered else None,
+            kind=SpanKind.CONSUMER if delivered else SpanKind.INTERNAL,
+            attributes=attributes,
+        ) as span:
+            job = Job(name, span)
+            try:
+                yield job
+            except BaseException as fault:
+                job.outcome = "error"
+                # The span keeps the traceback; this line says where to look.
+                log.error(
+                    "job failed",
+                    extra={
+                        "job": name,
+                        "error": type(fault).__name__,
+                        "duration_ms": job.elapsed_ms(),
+                    },
+                )
+                raise
+            finally:
+                span.set_attribute(JOB_OUTCOME, job.outcome)
+                labels = {"job": name, "outcome": job.outcome}
+                self._jobs.add(1, labels)
+                self._job_seconds.record(job.seconds(), labels)
 
     def flush(self) -> None:
         """Sends what has been recorded and not yet sent, waiting no longer
