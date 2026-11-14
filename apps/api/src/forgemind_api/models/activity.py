@@ -7,7 +7,17 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -89,7 +99,9 @@ class AuditEvent(IdMixin, Base):
 
 
 class UsageRecord(IdMixin, Base):
-    """One measured quantity, attributed to a run when there is one."""
+    """One measured quantity, read off one event of a run. The rows are a
+    ledger of what `metering` measures: written with the event, in its
+    transaction, and never changed after."""
 
     __tablename__ = "usage_records"
 
@@ -99,6 +111,8 @@ class UsageRecord(IdMixin, Base):
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("runs.id", ondelete="SET NULL")
     )
+    # The event the quantity was read off, by its number in the run.
+    event_seq: Mapped[int | None] = mapped_column(Integer)
     kind: Mapped[str] = mapped_column(enum("usage_kind", *USAGE_KINDS), nullable=False)
     provider: Mapped[str | None] = mapped_column(String(40))
     model: Mapped[str | None] = mapped_column(String(80))
@@ -118,5 +132,17 @@ class UsageRecord(IdMixin, Base):
             "ix_usage_records_organization_id_recorded_at",
             "organization_id",
             "recorded_at",
+        ),
+        # An event measures a kind once, so it cannot be entered twice. Nulls
+        # count as equal: only tokens have a direction.
+        Index(
+            "ix_usage_records_event",
+            "run_id",
+            "event_seq",
+            "kind",
+            "direction",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+            postgresql_where=text("run_id IS NOT NULL AND event_seq IS NOT NULL"),
         ),
     )
