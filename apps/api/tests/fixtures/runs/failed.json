@@ -106,6 +106,18 @@
       "id": "run-1-12",
       "runId": "run-1",
       "seq": 12,
+      "at": "2026-11-06T12:00:08.700Z",
+      "type": "model.called",
+      "agent": "architect",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "inputTokens": 18400,
+      "outputTokens": 1250
+    },
+    {
+      "id": "run-1-13",
+      "runId": "run-1",
+      "seq": 13,
       "at": "2026-11-06T12:00:09.500Z",
       "type": "stage.finished",
       "stage": "inspection",
@@ -115,9 +127,9 @@
       "failureReason": null
     },
     {
-      "id": "run-1-13",
+      "id": "run-1-14",
       "runId": "run-1",
-      "seq": 13,
+      "seq": 14,
       "at": "2026-11-06T12:00:10.000Z",
       "type": "resources.sampled",
       "cpuSeconds": 2.1,
@@ -125,9 +137,9 @@
       "sandboxSeconds": 9
     },
     {
-      "id": "run-1-14",
+      "id": "run-1-15",
       "runId": "run-1",
-      "seq": 14,
+      "seq": 15,
       "at": "2026-11-06T12:00:10.700Z",
       "type": "stage.started",
       "stage": "planning",
@@ -135,27 +147,39 @@
       "agent": "architect"
     },
     {
-      "id": "run-1-15",
+      "id": "run-1-16",
       "runId": "run-1",
-      "seq": 15,
+      "seq": 16,
       "at": "2026-11-06T12:00:11.100Z",
       "type": "operation",
       "agent": "architect",
       "text": "Drafting the implementation plan"
     },
     {
-      "id": "run-1-16",
+      "id": "run-1-17",
       "runId": "run-1",
-      "seq": 16,
+      "seq": 17,
       "at": "2026-11-06T12:00:14.300Z",
       "type": "agent.note",
       "agent": "architect",
       "text": "Plan: carry the remaining budget across revisions in src/retry.ts, add a regression test, and keep src/tasks/run.ts untouched apart from the type. Acceptance: the new test passes and the existing 41 tests keep passing."
     },
     {
-      "id": "run-1-17",
+      "id": "run-1-18",
       "runId": "run-1",
-      "seq": 17,
+      "seq": 18,
+      "at": "2026-11-06T12:00:14.300Z",
+      "type": "model.called",
+      "agent": "architect",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "inputTokens": 22900,
+      "outputTokens": 2140
+    },
+    {
+      "id": "run-1-19",
+      "runId": "run-1",
+      "seq": 19,
       "at": "2026-11-06T12:00:15.200Z",
       "type": "stage.finished",
       "stage": "planning",
@@ -165,9 +189,9 @@
       "failureReason": null
     },
     {
-      "id": "run-1-18",
+      "id": "run-1-20",
       "runId": "run-1",
-      "seq": 18,
+      "seq": 20,
       "at": "2026-11-06T12:00:15.900Z",
       "type": "stage.started",
       "stage": "implementation",
@@ -175,18 +199,18 @@
       "agent": "developer"
     },
     {
-      "id": "run-1-19",
+      "id": "run-1-21",
       "runId": "run-1",
-      "seq": 19,
+      "seq": 21,
       "at": "2026-11-06T12:00:16.300Z",
       "type": "operation",
       "agent": "developer",
       "text": "Reproducing the reported failure"
     },
     {
-      "id": "run-1-20",
+      "id": "run-1-22",
       "runId": "run-1",
-      "seq": 20,
+      "seq": 22,
       "at": "2026-11-06T12:00:17.100Z",
       "type": "command.started",
       "commandId": "cmd-repro",
@@ -194,9 +218,9 @@
       "cwd": null
     },
     {
-      "id": "run-1-21",
+      "id": "run-1-23",
       "runId": "run-1",
-      "seq": 21,
+      "seq": 23,
       "at": "2026-11-06T12:00:20.100Z",
       "type": "command.output",
       "commandId": "cmd-repro",
@@ -204,9 +228,9 @@
       "text": " ✓ tests/retry.test.ts (2)\n\n Tests  2 passed (2)\n"
     },
     {
-      "id": "run-1-22",
+      "id": "run-1-24",
       "runId": "run-1",
-      "seq": 22,
+      "seq": 24,
       "at": "2026-11-06T12:00:20.200Z",
       "type": "command.finished",
       "commandId": "cmd-repro",
@@ -214,18 +238,30 @@
       "durationMs": 3100
     },
     {
-      "id": "run-1-23",
+      "id": "run-1-25",
       "runId": "run-1",
-      "seq": 23,
+      "seq": 25,
       "at": "2026-11-06T12:00:21.700Z",
       "type": "agent.note",
       "agent": "developer",
       "text": "The failure described in the task does not reproduce on the base commit. No change was made rather than guessing at a fix."
     },
     {
-      "id": "run-1-24",
+      "id": "run-1-26",
       "runId": "run-1",
-      "seq": 24,
+      "seq": 26,
+      "at": "2026-11-06T12:00:21.700Z",
+      "type": "model.called",
+      "agent": "developer",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "inputTokens": 33700,
+      "outputTokens": 2050
+    },
+    {
+      "id": "run-1-27",
+      "runId": "run-1",
+      "seq": 27,
       "at": "2026-11-06T12:00:22.300Z",
       "type": "stage.finished",
       "stage": "implementation",
@@ -235,9 +271,9 @@
       "failureReason": "Could not reproduce the failure; no change made"
     },
     {
-      "id": "run-1-25",
+      "id": "run-1-28",
       "runId": "run-1",
-      "seq": 25,
+      "seq": 28,
       "at": "2026-11-06T12:00:23.100Z",
       "type": "run.finished",
       "status": "completed",
@@ -335,7 +371,7 @@
     },
     "baseCommit": "abc1234",
     "branch": "forgemind/task-1",
-    "lastSeq": 25,
+    "lastSeq": 28,
     "startedAt": "2026-11-06T12:00:00.300Z",
     "finishedAt": "2026-11-06T12:00:23.100Z",
     "error": null

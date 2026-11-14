@@ -47,6 +47,29 @@ const sample = (script: Script, cpu: number, memory: number, sandbox: number) =>
     500,
   );
 
+/** Which model each agent calls: as made up as the token counts beside it. */
+const models = {
+  architect: 'claude-opus-5-5',
+  review: 'claude-opus-5-5',
+  developer: 'claude-sonnet-5-5',
+  testing: 'claude-sonnet-5-5',
+  release: 'claude-sonnet-5-5',
+} as const;
+
+/** Added with no time of its own: the call is recorded as it returns. */
+const call = (
+  agent: keyof typeof models,
+  inputTokens: number,
+  outputTokens: number,
+): EventTemplate => ({
+  type: 'model.called',
+  agent,
+  provider: 'anthropic',
+  model: models[agent],
+  inputTokens,
+  outputTokens,
+});
+
 function inspection(script: Script) {
   script
     .add(
@@ -105,6 +128,7 @@ function inspection(script: Script) {
       },
       2200,
     )
+    .add(call('architect', 18_400, 1_250), 0)
     .add(
       {
         type: 'stage.finished',
@@ -146,6 +170,7 @@ function planning(script: Script) {
       },
       3200,
     )
+    .add(call('architect', 22_900, 2_140), 0)
     .add(
       {
         type: 'stage.finished',
@@ -186,7 +211,7 @@ function implementation(
       400,
     );
   for (const file of files) script.add(file, 2000);
-  script.add(
+  script.add(call('developer', 41_300 + attempt * 6_200, 6_820), 0).add(
     {
       type: 'stage.finished',
       stage: 'implementation',
@@ -341,6 +366,7 @@ function testing(script: Script, attempt: number, pass: boolean) {
         },
         200,
       )
+      .add(call('testing', 9_600, 480), 0)
       .add(
         {
           type: 'stage.finished',
@@ -392,6 +418,7 @@ function testing(script: Script, attempt: number, pass: boolean) {
         },
         200,
       )
+      .add(call('testing', 11_200, 910), 0)
       .add(
         {
           type: 'stage.finished',
@@ -466,6 +493,7 @@ function review(
       },
       1200,
     )
+    .add(call('review', 27_500, 1_360), 0)
     .add(
       {
         type: 'review.finished',
@@ -690,7 +718,8 @@ function awaitApproval(script: Script) {
       },
       400,
     )
-    .add({ type: 'approval.requested' }, 1800);
+    .add(call('release', 12_800, 890), 1800)
+    .add({ type: 'approval.requested' }, 0);
 }
 
 const start = (script: Script, ctx: ScenarioContext, expectsPatch = true) =>
@@ -839,6 +868,7 @@ export const scenarios: Record<ScenarioName, (ctx: ScenarioContext) => Step[]> =
           },
           1500,
         )
+        .add(call('developer', 33_700, 2_050), 0)
         .add(
           {
             type: 'stage.finished',
@@ -899,6 +929,7 @@ export const scenarios: Record<ScenarioName, (ctx: ScenarioContext) => Step[]> =
           },
           2400,
         )
+        .add(call('review', 24_100, 1_180), 0)
         .add(
           {
             type: 'review.finished',
