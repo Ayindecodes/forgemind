@@ -12,16 +12,18 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from forgemind_api.auth import now
 from forgemind_api.errors import ApiFailure
 from forgemind_api.execution import append_event, locked_run
-from forgemind_api.models import Run
+from forgemind_api.metering import meter_run
+from forgemind_api.models import Run, UsageRecord
 from forgemind_api.pipeline import StageFailed, StepContext
 from forgemind_api.runstate import run_from_events
-from forgemind_api.settings import Settings
+from forgemind_api.settings import Prices, Settings
+from forgemind_api.usage import reconcile, usage_summary
 from forgemind_api.worker import (
     INTERRUPTED,
     INTERRUPTED_CHECK,
@@ -816,6 +818,113 @@ def test_a_cancel_arriving_as_the_run_finishes_waits_and_is_refused(
     events = events_of(sessions, run_id)
     assert kinds(events).count("run.finished") == 1
     assert run_of(sessions, run_id).status == "completed"
+
+
+# --- what a run used
+
+
+def test_what_a_step_reports_using_is_what_the_organization_is_shown(
+    sessions: Sessions, settings: Settings
+) -> None:
+    def work(context: StepContext) -> str | None:
+        context.emit(
+            "model.called",
+            {
+                "agent": "architect",
+                "provider": "example",
+                "model": "model-a",
+                "inputTokens": 1200,
+                "outputTokens": 340,
+            },
+        )
+        for cpu, memory, sandbox in ((2.1, 310, 9), (5.5, 512, 23)):
+            context.emit(
+                "resources.sampled",
+                {"cpuSeconds": cpu, "memoryMb": memory, "sandboxSeconds": sandbox},
+            )
+        return "Read 12 files"
+
+    run_id = queued_run(sessions)
+    pipeline = [Scripted("inspection", work, agent="architect")]
+    assert execute_run(sessions, run_id, settings, pipeline) == "executed"
+    run = run_of(sessions, run_id)
+    with sessions() as db:
+        summary = usage_summary(db, run.organization_id, Prices(), run.finished_at)
+        found = reconcile(db)
+    assert summary["tokens"] == [
+        {"provider": "example", "model": "model-a", "input": 1200, "output": 340}
+    ]
+    assert (summary["cpuSeconds"], summary["sandboxSeconds"]) == (5.5, 23)
+    # 310 MB for 9 seconds, then 512 MB for 14.
+    assert summary["memoryMbHours"] == 2.7661
+    assert summary["retryOverheadSeconds"] == 0
+    assert summary["runs"] == {
+        "total": 1,
+        "succeeded": 0,
+        "partial": 0,
+        "failed": 1,
+        "unverified": 0,
+    }
+    assert summary["quotas"]["monthlyTokens"]["used"] == 1540
+    # Nobody set a price, so nobody is told a cost.
+    assert summary["cost"] == {
+        "kind": "unavailable",
+        "reason": (
+            "No price is set on this server for example/model-a or sandbox time."
+        ),
+    }
+    # Seven events, and an entry for each of the eight things they measured.
+    assert (found.runs, found.events, found.records) == (1, 7, 8)
+    assert found.differences == []
+
+
+def test_the_time_a_lost_worker_spent_on_a_retry_is_counted(
+    sessions: Sessions, settings: Settings
+) -> None:
+    run_id = queued_run(sessions)
+    failed = (
+        "stage.finished",
+        {
+            "stage": "inspection",
+            "attempt": 1,
+            "status": "failed",
+            "summary": None,
+            "failureReason": "The repository could not be read.",
+        },
+    )
+    lost_worker(
+        sessions,
+        run_id,
+        settings,
+        timedelta(seconds=30),
+        [started("inspection"), failed, started("inspection", attempt=2)],
+    )
+    pipeline = [Scripted("inspection", says("Read 12 files"))]
+    assert execute_run(sessions, run_id, settings, pipeline) == "executed"
+    events = events_of(sessions, run_id)
+    closed = next(
+        event
+        for event in events
+        if event["type"] == "stage.finished" and event["attempt"] == 2
+    )
+    assert closed["failureReason"] == INTERRUPTED
+    with sessions() as db:
+        entered = db.scalars(
+            select(UsageRecord)
+            .where(UsageRecord.run_id == run_id)
+            .order_by(UsageRecord.event_seq)
+        ).all()
+        found = reconcile(db)
+    # The second attempt ran from when it started to when it was closed.
+    assert (entered[0].kind, entered[0].event_seq) == (
+        "retry_overhead_seconds",
+        closed["seq"],
+    )
+    assert entered[0].quantity >= 29
+    assert [(entry.event_seq, entry.kind, entry.quantity) for entry in entered] == [
+        (event["seq"], item.kind, item.quantity) for event, item in meter_run(events)
+    ]
+    assert found.differences == []
 
 
 def test_each_process_gets_its_own_sessions_and_keeps_them(
