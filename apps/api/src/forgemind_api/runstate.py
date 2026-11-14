@@ -286,7 +286,8 @@ def apply(run: Run, event: Event) -> Run:
                 for stage in run["stages"]
             ],
         }
-    # agent.note, command.*, log: a record, not a change of state.
+    # agent.note, model.called, command.*, log: a record, not a change of
+    # state.
     return run
 
 
