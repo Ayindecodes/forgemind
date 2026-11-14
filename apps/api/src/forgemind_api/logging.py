@@ -1,4 +1,5 @@
-"""Structured logs: one JSON object per line, carrying the request id."""
+"""Structured logs: one JSON object per line, carrying the request id and,
+inside a traced request or job, the ids of its trace and span."""
 
 from __future__ import annotations
 
@@ -8,6 +9,8 @@ import sys
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
+
+from opentelemetry import trace
 
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
@@ -25,6 +28,11 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
             "request_id": request_id_var.get(),
         }
+        span = trace.get_current_span().get_span_context()
+        if span.is_valid:
+            # As a trace viewer writes them, so a line leads to its trace.
+            line["trace_id"] = format(span.trace_id, "032x")
+            line["span_id"] = format(span.span_id, "016x")
         for key, value in record.__dict__.items():
             if key not in _STANDARD_ATTRIBUTES and not key.startswith("_"):
                 line[key] = value
