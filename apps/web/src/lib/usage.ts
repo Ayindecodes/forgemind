@@ -30,6 +30,22 @@ export function costView(cost: UsageSummary['cost']): CostView {
   }
 }
 
+/**
+ * What stands under the cost. An estimate says what it was worked out from.
+ * A cost that is not available already gives its reason in place of a
+ * figure, so nothing is added to it.
+ */
+export function costNote(cost: CostView): string | null {
+  switch (cost.kind) {
+    case 'estimate':
+      return 'Estimated from token and sandbox usage at the prices set on the server. The billed amount may differ.';
+    case 'actual':
+      return 'The amount billed for this period.';
+    case 'unavailable':
+      return null;
+  }
+}
+
 export const totalTokens = (usage: UsageSummary) =>
   usage.tokens.reduce((sum, { input, output }) => sum + input + output, 0);
 

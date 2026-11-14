@@ -1,7 +1,7 @@
 import type { UsageSummary } from '@forgemind/contract';
 import { describe, expect, it } from 'vitest';
 
-import { costView, quotaRatio, runShare, totalTokens } from './usage';
+import { costNote, costView, quotaRatio, runShare, totalTokens } from './usage';
 
 const usage: UsageSummary = {
   period: { from: '2026-10-07T00:00:00Z', to: '2026-11-06T00:00:00Z' },
@@ -50,6 +50,28 @@ describe('costView', () => {
     expect(costView({ kind: 'estimate', amountUsd: 1 }).label).not.toBe(
       costView({ kind: 'actual', amountUsd: 1 }).label,
     );
+  });
+});
+
+describe('costNote', () => {
+  it('says an estimate is one, and what it was worked out from', () => {
+    const note = costNote(costView({ kind: 'estimate', amountUsd: 1 }));
+    expect(note).toMatch(/^Estimated from/);
+    expect(note).toContain('prices set on the server');
+    expect(note).toContain('may differ');
+  });
+
+  it('never describes an estimate as what was billed', () => {
+    const estimate = costNote(costView({ kind: 'estimate', amountUsd: 1 }));
+    const actual = costNote(costView({ kind: 'actual', amountUsd: 1 }));
+    expect(actual).toBe('The amount billed for this period.');
+    expect(estimate).not.toBe(actual);
+  });
+
+  it('adds nothing to a cost that already says why it is missing', () => {
+    expect(
+      costNote(costView({ kind: 'unavailable', reason: 'No price is set.' })),
+    ).toBeNull();
   });
 });
 
