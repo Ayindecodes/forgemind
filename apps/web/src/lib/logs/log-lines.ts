@@ -159,6 +159,7 @@ export class LogBuilder {
       case 'file.changed':
       case 'check.started':
       case 'review.finished':
+      case 'model.called':
       case 'resources.sampled':
       case 'approval.requested':
         this.push(event, 'system', 'info', describeEvent(event));

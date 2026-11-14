@@ -251,6 +251,7 @@ export function deriveRunView(events: readonly Event[], run: Run): RunView {
         break;
       case 'run.started':
       case 'review.finished':
+      case 'model.called':
       case 'resources.sampled':
       case 'approval.requested':
       case 'run.finished':

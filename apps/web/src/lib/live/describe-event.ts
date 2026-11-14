@@ -1,6 +1,6 @@
 import type { Event, EventType } from '@forgemind/contract';
 
-import { formatDuration } from '@/lib/format';
+import { formatDuration, formatNumber } from '@/lib/format';
 import { shortCommit } from '@/lib/repositories';
 import { agentLabels, stageLabels } from '@/lib/run-labels';
 
@@ -27,6 +27,7 @@ const kinds: Record<EventType, EventKind> = {
   'check.finished': 'execution',
   'retry.scheduled': 'execution',
   'review.finished': 'execution',
+  'model.called': 'execution',
   'resources.sampled': 'execution',
   'approval.requested': 'execution',
   'run.finished': 'execution',
@@ -95,6 +96,8 @@ export function describeEvent(event: Event): string {
           ? ` with ${plural(event.concerns.length, 'concern')}`
           : ''
       }${event.acceptanceCriteriaMet ? '' : '. Acceptance criteria not met'}`;
+    case 'model.called':
+      return `Called ${event.model}: ${formatNumber(event.inputTokens)} tokens in, ${formatNumber(event.outputTokens)} out`;
     case 'resources.sampled':
       return `CPU ${Math.round(event.cpuSeconds)}s, memory ${Math.round(event.memoryMb)} MB, sandbox ${Math.round(event.sandboxSeconds)}s`;
     case 'approval.requested':

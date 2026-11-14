@@ -270,6 +270,7 @@ function apply(run: Run, event: Event): Run {
       };
 
     case 'agent.note':
+    case 'model.called':
     case 'command.started':
     case 'command.output':
     case 'command.finished':

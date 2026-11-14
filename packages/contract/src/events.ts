@@ -100,6 +100,15 @@ export const Event = z.discriminatedUnion('type', [
     concerns: z.array(z.string()),
     acceptanceCriteriaMet: z.boolean(),
   }),
+  /** One call to a language model, with the tokens its provider counted. */
+  event('model.called', {
+    agent: AgentType.nullable(),
+    provider: z.string().min(1).max(40),
+    model: z.string().min(1).max(80),
+    inputTokens: z.int().min(0),
+    outputTokens: z.int().min(0),
+  }),
+  /** Running totals for the run so far, not what was used since the last. */
   event('resources.sampled', {
     cpuSeconds: z.number().min(0),
     memoryMb: z.number().min(0),

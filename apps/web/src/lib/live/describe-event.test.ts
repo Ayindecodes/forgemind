@@ -57,6 +57,13 @@ const samples: Record<EventType, Record<string, unknown>> = {
     concerns: ['Missing test'],
     acceptanceCriteriaMet: false,
   },
+  'model.called': {
+    agent: 'developer',
+    provider: 'anthropic',
+    model: 'model-a',
+    inputTokens: 12400,
+    outputTokens: 1830,
+  },
   'resources.sampled': {
     cpuSeconds: 12.4,
     memoryMb: 512.6,
@@ -99,6 +106,9 @@ describe('describeEvent', () => {
     );
     expect(describe('review.finished')).toBe(
       'Review requested changes with 1 concern. Acceptance criteria not met',
+    );
+    expect(describe('model.called')).toBe(
+      'Called model-a: 12,400 tokens in, 1,830 out',
     );
   });
 
