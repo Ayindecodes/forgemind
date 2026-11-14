@@ -13,7 +13,14 @@ from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api.auth import Principal, now
 from forgemind_api.errors import ApiFailure
-from forgemind_api.models import ExecutionEvent, Notification, Run, Task
+from forgemind_api.metering import measure_event
+from forgemind_api.models import (
+    ExecutionEvent,
+    Notification,
+    Run,
+    Task,
+    UsageRecord,
+)
 from forgemind_api.organizations import audit, require_org, require_role
 from forgemind_api.queue import Dispatcher, dispatch_after_commit
 from forgemind_api.repositories import repository_of
@@ -22,16 +29,26 @@ from forgemind_api.runstate import initial_run, reduce_run
 DEFAULT_BUDGET = {"maxMinutes": 60, "maxRetries": 2, "maxTokens": 400_000}
 
 
-def event_json(event: ExecutionEvent) -> dict[str, Any]:
+def wire_event(
+    run_id: uuid.UUID,
+    seq: int,
+    at: datetime,
+    event_type: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
     """The contract's event: the stored payload under its identity."""
     return {
-        "id": f"{event.run_id}-{event.seq}",
-        "runId": str(event.run_id),
-        "seq": event.seq,
-        "at": event.at.isoformat().replace("+00:00", "Z"),
-        "type": event.type,
-        **event.payload,
+        "id": f"{run_id}-{seq}",
+        "runId": str(run_id),
+        "seq": seq,
+        "at": at.isoformat().replace("+00:00", "Z"),
+        "type": event_type,
+        **payload,
     }
+
+
+def event_json(event: ExecutionEvent) -> dict[str, Any]:
+    return wire_event(event.run_id, event.seq, event.at, event.type, event.payload)
 
 
 def run_view(run: Run) -> dict[str, Any]:
@@ -94,9 +111,10 @@ def append_event(
     payload: dict[str, Any],
     at: datetime | None = None,
 ) -> ExecutionEvent:
-    """Records one thing that happened, folds it into the run, and moves the
-    task and its notifications along. Events are never updated or removed.
-    The run is locked first, so events are numbered one writer at a time."""
+    """Records one thing that happened, enters what it used in the usage
+    ledger, folds it into the run, and moves the task and its notifications
+    along. Events are never updated or removed. The run is locked first, so
+    events are numbered one writer at a time."""
     db.flush()
     db.refresh(run, with_for_update=True)
     stamp = at or now()
@@ -109,7 +127,25 @@ def append_event(
     )
     db.add(event)
     db.flush()
-    state = reduce_run(run_view(run), event_json(event))
+    before = run_view(run)
+    recorded = event_json(event)
+    # In the event's own transaction: the ledger never holds usage no event
+    # shows, and no event's usage is missing from it.
+    for used in measure_event(before, recorded):
+        db.add(
+            UsageRecord(
+                organization_id=run.organization_id,
+                run_id=run.id,
+                event_seq=event.seq,
+                kind=used.kind,
+                provider=used.provider,
+                model=used.model,
+                direction=used.direction,
+                quantity=used.quantity,
+                recorded_at=stamp,
+            )
+        )
+    state = reduce_run(before, recorded)
     sync_run_columns(run, state)
     if run.status != "running":
         # Nobody is executing a run that is not running: the lease ends in
