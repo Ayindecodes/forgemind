@@ -4,17 +4,19 @@ and from what a process sends to a collector."""
 
 from __future__ import annotations
 
+import logging
 import socket
 import time
 from typing import Any
 
 import pytest
+from celery.app.task import Context
 from fastapi.testclient import TestClient
 from opentelemetry.trace import SpanKind, StatusCode
 
 from forgemind_api.app import REQUEST_ID_HEADER, create_app
 from forgemind_api.logging import request_id_var
-from forgemind_api.queue import EXECUTE_RUN
+from forgemind_api.queue import EXECUTE_RUN, QUEUE
 from forgemind_api.settings import Settings
 from forgemind_api.telemetry import (
     JOB_DURATION,
@@ -25,6 +27,7 @@ from forgemind_api.telemetry import (
     Telemetry,
     carried,
 )
+from forgemind_api.worker import SWEEP_RUNS, delivery, swept
 from tests.observing import (
     CALLER_SPAN_ID,
     TRACE_ID,
@@ -38,6 +41,7 @@ from tests.observing import (
     span_id_of,
     trace_id_of,
 )
+from tests.workers import QUIET
 
 SETTINGS = Settings(version="1.2.3", commit="abc1234")
 
@@ -162,6 +166,38 @@ def test_each_application_records_into_its_own_telemetry() -> None:
 # --- jobs
 
 
+def test_a_job_is_a_span_a_count_and_a_time_under_what_it_came_to() -> None:
+    seen = observed(SETTINGS, "forgemind-sweeper")
+    with seen.telemetry.job(SWEEP_RUNS) as job:
+        job.outcome = "quiet"
+    with seen.telemetry.job(SWEEP_RUNS) as job:
+        job.outcome = "quiet"
+    with seen.telemetry.job(SWEEP_RUNS, attributes={"why": "an example"}) as job:
+        job.outcome = "swept"
+    with seen.telemetry.job("forgemind.example"):
+        pass
+    spans = seen.spans()
+    assert [
+        (span.name, span.kind, dict(span.attributes or {})[JOB_OUTCOME])
+        for span in spans
+    ] == [
+        (SWEEP_RUNS, SpanKind.INTERNAL, "quiet"),
+        (SWEEP_RUNS, SpanKind.INTERNAL, "quiet"),
+        (SWEEP_RUNS, SpanKind.INTERNAL, "swept"),
+        ("forgemind.example", SpanKind.INTERNAL, "ok"),
+    ]
+    assert dict(spans[2].attributes or {})["why"] == "an example"
+    assert len({trace_id_of(span) for span in spans}) == 4
+    assert spans[0].resource.attributes["service.name"] == "forgemind-sweeper"
+    counted = {
+        (SWEEP_RUNS, "quiet"): 2,
+        (SWEEP_RUNS, "swept"): 1,
+        ("forgemind.example", "ok"): 1,
+    }
+    assert seen.points(JOBS, "job", "outcome") == counted
+    assert seen.points(JOB_DURATION, "job", "outcome") == counted
+
+
 def test_a_job_that_raises_is_an_error_everywhere_it_is_recorded() -> None:
     seen = observed(SETTINGS, "forgemind-worker")
     with (
@@ -238,6 +274,117 @@ def test_a_job_taken_from_the_queue_continues_the_trace_its_message_was_sent_in(
     assert len({trace_id_of(span) for span in worker.spans()}) == 3
 
 
+# --- a worker's deliveries, and the sweeper's sweeps
+
+CARRYING = {"traceparent": TRACEPARENT, REQUEST_ID: "request-7"}
+
+
+@pytest.mark.parametrize(
+    "request_",
+    [
+        # As a worker hands a task its request: what the message carried is
+        # lifted onto it, beside Celery's own.
+        Context({"id": "message-1", "task": EXECUTE_RUN, **CARRYING}),
+        # As a task called in this process finds it: kept together.
+        Context({"id": "message-1", "task": EXECUTE_RUN, "headers": CARRYING}),
+    ],
+    ids=["from the queue", "called in process"],
+)
+def test_a_delivery_is_a_job_in_the_senders_trace_logged_under_the_senders_request(
+    request_: Context,
+) -> None:
+    seen = observed(SETTINGS, "forgemind-worker")
+    with (
+        log_lines() as lines,
+        delivery(
+            seen.telemetry, request_, EXECUTE_RUN, {"forgemind.run_id": "run-1"}
+        ) as job,
+    ):
+        job.outcome = "executed"
+        logging.getLogger("forgemind_api.worker").info("delivery handled")
+    # The request it was logged under ends with the delivery.
+    assert request_id_var.get() is None
+    [span] = seen.spans()
+    assert (span.name, span.kind) == (EXECUTE_RUN, SpanKind.CONSUMER)
+    assert (trace_id_of(span), parent_id_of(span)) == (TRACE_ID, CALLER_SPAN_ID)
+    assert dict(span.attributes or {}) == {
+        "messaging.destination.name": QUEUE,
+        "messaging.message.id": "message-1",
+        "forgemind.run_id": "run-1",
+        JOB_OUTCOME: "executed",
+    }
+    [line] = lines
+    assert (line["message"], line["request_id"], line["trace_id"], line["span_id"]) == (
+        "delivery handled",
+        "request-7",
+        TRACE_ID,
+        span_id_of(span),
+    )
+    assert seen.points(JOBS, "job", "outcome") == {(EXECUTE_RUN, "executed"): 1}
+
+
+def test_a_delivery_that_carried_nothing_is_a_job_with_a_trace_of_its_own() -> None:
+    seen = observed(SETTINGS, "forgemind-worker")
+    with (
+        log_lines() as lines,
+        delivery(seen.telemetry, Context(), EXECUTE_RUN, {}) as job,
+    ):
+        logging.getLogger("forgemind_api.worker").info("delivery handled")
+    [span] = seen.spans()
+    assert (span.kind, span.parent) == (SpanKind.CONSUMER, None)
+    assert dict(span.attributes or {}) == {
+        "messaging.destination.name": QUEUE,
+        JOB_OUTCOME: job.outcome,
+    }
+    assert (lines[0]["request_id"], lines[0]["trace_id"]) == (None, trace_id_of(span))
+
+
+def test_a_delivery_that_fails_still_ends_the_request_it_was_logged_under() -> None:
+    seen = observed(SETTINGS, "forgemind-worker")
+    request = Context({"id": "message-1", **CARRYING})
+    with (
+        log_lines() as lines,
+        pytest.raises(RuntimeError),
+        delivery(seen.telemetry, request, EXECUTE_RUN, {}),
+    ):
+        raise RuntimeError("the database went away")
+    assert request_id_var.get() is None
+    assert [(line["message"], line["request_id"]) for line in lines] == [
+        ("job failed", "request-7")
+    ]
+    assert seen.points(JOBS, "job", "outcome") == {(EXECUTE_RUN, "error"): 1}
+
+
+def test_a_sweep_that_did_something_says_so_aloud_and_a_quiet_one_quietly() -> None:
+    seen = observed(SETTINGS, "forgemind-sweeper")
+    with log_lines("forgemind_api.worker") as lines:
+        with seen.telemetry.job(SWEEP_RUNS) as job:
+            swept(job, "swept", {**QUIET, "queued": 1})
+        with seen.telemetry.job(SWEEP_RUNS) as job:
+            swept(job, "swept", QUIET)
+    busy, quiet = seen.spans()
+    assert [
+        (line["level"], line["message"], line["queued"], line["trace_id"])
+        for line in lines
+    ] == [
+        ("INFO", "swept", 1, trace_id_of(busy)),
+        ("DEBUG", "swept", 0, trace_id_of(quiet)),
+    ]
+    assert all(isinstance(line["duration_ms"], int) for line in lines)
+    assert dict(busy.attributes or {}) == {
+        "forgemind.sweep.recovered": 0,
+        "forgemind.sweep.stopped": 0,
+        "forgemind.sweep.queued": 1,
+        "forgemind.sweep.undelivered": 0,
+        JOB_OUTCOME: "swept",
+    }
+    assert dict(quiet.attributes or {})[JOB_OUTCOME] == "quiet"
+    assert seen.points(JOBS, "job", "outcome") == {
+        (SWEEP_RUNS, "swept"): 1,
+        (SWEEP_RUNS, "quiet"): 1,
+    }
+
+
 # --- sending
 
 
@@ -276,6 +423,23 @@ def test_with_an_endpoint_set_spans_and_metrics_are_sent_to_it() -> None:
             assert receiving.spans("forgemind-api") == []
         finally:
             telemetry.shutdown()
+
+
+def test_what_is_left_is_sent_when_telemetry_shuts_down() -> None:
+    with collector() as receiving:
+        settings = Settings(otel_endpoint=receiving.url)
+        telemetry = Telemetry(settings, "forgemind-sweeper")
+        with telemetry.job(SWEEP_RUNS) as job:
+            job.outcome = "quiet"
+        telemetry.shutdown()
+        assert [(s.service, s.name, s.kind) for s in receiving.spans()] == [
+            ("forgemind-sweeper", SWEEP_RUNS, "internal")
+        ]
+        assert receiving.points("forgemind-sweeper", JOBS, "job", "outcome") == {
+            (SWEEP_RUNS, "quiet"): 1
+        }
+        # Shutting down twice is no harm: a process may be asked more than once.
+        telemetry.shutdown()
 
 
 def test_a_collector_that_is_not_there_costs_a_job_a_bounded_wait_and_nothing_else(

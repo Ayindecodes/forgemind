@@ -4,7 +4,10 @@ in those events, so a second worker can continue where a dead one stopped:
 nothing a run did is recorded twice, and nothing recorded is lost.
 
 The same workers index repositories, and the same sweeper looks after the
-ones left waiting: see `indexing`."""
+ones left waiting: see `indexing`.
+
+Each delivery a worker handles, and each sweep, is a job: it has a span, a
+count, a time and a log line, as `telemetry` describes."""
 
 from __future__ import annotations
 
@@ -14,7 +17,8 @@ import os
 import signal
 import threading
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import FrameType
 from typing import Any, Literal
@@ -37,7 +41,7 @@ from forgemind_api.execution import (
 from forgemind_api.github import GitHubProvider, make_provider
 from forgemind_api.indexing import index_repository, sweep_indexing
 from forgemind_api.leases import Heartbeat, Sessions, new_worker_id
-from forgemind_api.logging import configure_logging
+from forgemind_api.logging import configure_logging, request_id_var
 from forgemind_api.models import Run, Task
 from forgemind_api.pipeline import PIPELINE, StageFailed, Step
 from forgemind_api.queue import (
@@ -52,8 +56,13 @@ from forgemind_api.queue import (
 )
 from forgemind_api.repositories import account_login_of
 from forgemind_api.settings import Settings, SettingsError
+from forgemind_api.telemetry import REQUEST_ID, TRACEPARENT, Job, Telemetry
 
 log = logging.getLogger("forgemind_api.worker")
+
+# The sweeper's two jobs, named as the workers' are.
+SWEEP_RUNS = "forgemind.sweep_runs"
+SWEEP_INDEXING = "forgemind.sweep_indexing"
 
 Recorded = tuple[str, dict[str, Any]]
 
@@ -565,37 +574,116 @@ class ProcessProvider:
             return account_login_of(db, installation_id)
 
 
+class ProcessTelemetry:
+    """Telemetry per process, for the same reason again: the threads that
+    send it do not come across a fork."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._pid: int | None = None
+        self._telemetry: Telemetry | None = None
+
+    def __call__(self) -> Telemetry:
+        if self._telemetry is None or self._pid != os.getpid():
+            self._telemetry = Telemetry(self._settings, "forgemind-worker")
+            self._pid = os.getpid()
+        return self._telemetry
+
+
+def carried_by(request: Any) -> dict[str, str]:
+    """What the message a task was called with carried from its sender.
+    Celery keeps whatever a message carries beyond its own under the
+    request's `headers`, off the queue and called in this process alike."""
+    headers: Any = request.get("headers") or {}
+    found: dict[str, str] = {}
+    for key in (TRACEPARENT, REQUEST_ID):
+        value = headers.get(key)
+        if isinstance(value, str):
+            found[key] = value
+    return found
+
+
+@contextmanager
+def delivery(
+    telemetry: Telemetry, request: Any, name: str, attributes: Mapping[str, str]
+) -> Generator[Job]:
+    """One message being handled: a job in the trace the message was sent in,
+    logged under the id of the request that sent it. Its telemetry is on its
+    way before the next message is taken, since a pool process can be ended
+    without a chance to send anything more."""
+    carrier = carried_by(request)
+    described = {"messaging.destination.name": QUEUE, **attributes}
+    if isinstance(request.id, str):
+        described["messaging.message.id"] = request.id
+    token = request_id_var.set(carrier.get(REQUEST_ID))
+    try:
+        with telemetry.job(name, carrier, described) as job:
+            yield job
+    finally:
+        request_id_var.reset(token)
+        telemetry.flush()
+
+
 def _database_url(settings: Settings, purpose: str) -> str:
     if settings.database_url is None:
         raise SettingsError(f"FORGEMIND_DATABASE_URL is required to {purpose}")
     return settings.database_url
 
 
-def build_worker(settings: Settings, pipeline: Sequence[Step] = PIPELINE) -> Celery:
+def build_worker(
+    settings: Settings,
+    pipeline: Sequence[Step] = PIPELINE,
+    telemetry: Callable[[], Telemetry] | None = None,
+) -> Celery:
     """The Celery application with the tasks a worker executes."""
     sessions = ProcessSessions(_database_url(settings, "run a worker"))
     provider = ProcessProvider(settings, sessions)
+    observed = telemetry or ProcessTelemetry(settings)
     celery = make_celery(settings)
 
-    @celery.task(name=EXECUTE_RUN)
-    def execute(run_id: str) -> str:  # pyright: ignore[reportUnusedFunction]
-        verdict = execute_run(sessions(), uuid.UUID(run_id), settings, pipeline)
-        log.info("delivery handled", extra={"run_id": run_id, "verdict": verdict})
+    @celery.task(name=EXECUTE_RUN, bind=True)
+    def execute(task: Any, run_id: str) -> str:  # pyright: ignore[reportUnusedFunction]
+        with delivery(
+            observed(), task.request, EXECUTE_RUN, {"forgemind.run_id": run_id}
+        ) as job:
+            verdict = execute_run(sessions(), uuid.UUID(run_id), settings, pipeline)
+            job.outcome = verdict
+            log.info(
+                "delivery handled",
+                extra={
+                    "run_id": run_id,
+                    "verdict": verdict,
+                    "duration_ms": job.elapsed_ms(),
+                },
+            )
         return verdict
 
     # A clone that outlasts its own time limit by a minute is ended with the
     # process it runs in; the sweeper then sees the repository abandoned.
     @celery.task(
-        name=INDEX_REPOSITORY, time_limit=math.ceil(settings.indexing_seconds) + 60
+        name=INDEX_REPOSITORY,
+        bind=True,
+        time_limit=math.ceil(settings.indexing_seconds) + 60,
     )
-    def index(repository_id: str) -> str:  # pyright: ignore[reportUnusedFunction]
-        verdict = index_repository(
-            sessions(), uuid.UUID(repository_id), settings, provider()
-        )
-        log.info(
-            "indexing delivery handled",
-            extra={"repository_id": repository_id, "verdict": verdict},
-        )
+    def index(task: Any, repository_id: str) -> str:  # pyright: ignore[reportUnusedFunction]
+        with delivery(
+            observed(),
+            task.request,
+            INDEX_REPOSITORY,
+            {"forgemind.repository_id": repository_id},
+        ) as job:
+            verdict = index_repository(
+                sessions(), uuid.UUID(repository_id), settings, provider()
+            )
+            job.outcome = verdict
+            log.info(
+                "indexing delivery handled",
+                extra={
+                    "repository_id": repository_id,
+                    "verdict": verdict,
+                    "duration_ms": job.elapsed_ms(),
+                },
+            )
         return verdict
 
     return celery
@@ -627,7 +715,26 @@ def run_worker(settings: Settings, pipeline: Sequence[Step] = PIPELINE) -> int:
     return 0
 
 
-def run_sweeper(settings: Settings, stop: threading.Event | None = None) -> int:
+def swept(job: Job, message: str, counts: dict[str, int]) -> None:
+    """Says what a sweep did. Aloud only when it did something: most find
+    nothing to do, every few seconds."""
+    busy = any(counts.values())
+    job.outcome = "swept" if busy else "quiet"
+    job.span.set_attributes(
+        {f"forgemind.sweep.{name}": count for name, count in counts.items()}
+    )
+    log.log(
+        logging.INFO if busy else logging.DEBUG,
+        message,
+        extra={**counts, "duration_ms": job.elapsed_ms()},
+    )
+
+
+def run_sweeper(
+    settings: Settings,
+    stop: threading.Event | None = None,
+    telemetry: Telemetry | None = None,
+) -> int:
     """Sweeps on a timer until told to stop. Its own process, so recovery
     never waits behind what the workers are busy with."""
     configure_logging(settings.log_level)
@@ -635,6 +742,7 @@ def run_sweeper(settings: Settings, stop: threading.Event | None = None) -> int:
     sessions = make_session_factory(engine)
     celery = make_publisher(settings)
     dispatcher = CeleryDispatcher(celery)
+    observed = telemetry or Telemetry(settings, "forgemind-sweeper")
     stopping = stop or threading.Event()
     if stop is None:
 
@@ -647,17 +755,22 @@ def run_sweeper(settings: Settings, stop: threading.Event | None = None) -> int:
     try:
         while not stopping.is_set():
             try:
-                counts = sweep(sessions, settings, dispatcher)
-                if any(counts.values()):
-                    log.info("swept", extra=counts)
-                counts = sweep_indexing(sessions, settings, dispatcher)
-                if any(counts.values()):
-                    log.info("swept indexing", extra=counts)
+                # What a sweep queues is sent from inside its span, so the
+                # delivery that follows belongs to the sweep's trace.
+                with observed.job(SWEEP_RUNS) as job:
+                    swept(job, "swept", sweep(sessions, settings, dispatcher))
+                with observed.job(SWEEP_INDEXING) as job:
+                    swept(
+                        job,
+                        "swept indexing",
+                        sweep_indexing(sessions, settings, dispatcher),
+                    )
             except SQLAlchemyError:
                 log.warning("sweep failed; trying again", exc_info=True)
             stopping.wait(settings.worker_sweep_seconds)
     finally:
         celery.close()
         engine.dispose()
+        observed.shutdown()
     log.info("sweeper stopped")
     return 0
