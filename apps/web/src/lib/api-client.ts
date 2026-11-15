@@ -17,8 +17,14 @@ import type { z } from 'zod';
  * the UI can show. It also notes whether the API serves demo or live data.
  */
 
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+/*
+ * Where the API is: an origin, an origin with a path, or a path alone when
+ * the API is served under the interface's own origin, as /api is in a
+ * deployment.
+ */
+export const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'
+).replace(/\/+$/, '');
 
 type Endpoints = typeof endpoints;
 type Infer<T> = T extends z.ZodType ? z.infer<T> : never;
@@ -113,7 +119,7 @@ function noteDataSource(response: Response) {
   sourceListeners.forEach((listener) => listener());
 }
 
-/** The absolute URL of an endpoint, for callers that don't go through fetch. */
+/** The URL of an endpoint, for callers that don't go through fetch. */
 export function urlFor<K extends EndpointKey>(
   key: K,
   options: Pick<RequestOptions<K>, 'params' | 'query'>,
@@ -122,12 +128,15 @@ export function urlFor<K extends EndpointKey>(
     params?: Record<string, string>;
     query?: Record<string, unknown>;
   };
-  const url = new URL(buildPath(endpoints[key].path, params), API_URL);
+  const search = new URLSearchParams();
   for (const [name, value] of Object.entries(query ?? {})) {
-    if (value !== undefined && value !== null)
-      url.searchParams.set(name, String(value));
+    if (value !== undefined && value !== null) search.set(name, String(value));
   }
-  return url.toString();
+  // Joined as text: resolving the path against the base would drop a path
+  // the base carries, and has nothing to resolve against when it is only one.
+  const path = `${API_URL}${buildPath(endpoints[key].path, params)}`;
+  const asked = search.toString();
+  return asked ? `${path}?${asked}` : path;
 }
 
 export async function request<K extends EndpointKey>(

@@ -17,6 +17,50 @@ const reply = (body: unknown, init: ResponseInit = {}) =>
     ...init,
   });
 
+describe('urlFor', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  /** The client as a build with this NEXT_PUBLIC_API_URL has it. */
+  const clientAt = async (base: string) => {
+    vi.resetModules();
+    vi.stubEnv('NEXT_PUBLIC_API_URL', base);
+    return import('./api-client');
+  };
+
+  it('keeps the path of a base that is served under one', async () => {
+    const { urlFor } = await clientAt('https://staging.example.com/api');
+
+    expect(urlFor('tasks', { query: { limit: 5, status: 'running' } })).toBe(
+      'https://staging.example.com/api/tasks?limit=5&status=running',
+    );
+    expect(urlFor('task', { params: { id: 'task 1/2' } })).toBe(
+      'https://staging.example.com/api/tasks/task%201%2F2',
+    );
+  });
+
+  it("stays on the page's own origin when the base is only a path", async () => {
+    const { API_URL, urlFor } = await clientAt('/api');
+
+    expect(API_URL).toBe('/api');
+    expect(urlFor('session', {})).toBe('/api/auth/session');
+    expect(
+      urlFor('runEventStream', {
+        params: { id: 'run-1' },
+        query: { after: 3 },
+      }),
+    ).toBe('/api/runs/run-1/events/stream?after=3');
+  });
+
+  it('reads a base written with a closing slash as the same place', async () => {
+    const { urlFor } = await clientAt('http://localhost:4000/');
+
+    expect(urlFor('tasks', {})).toBe('http://localhost:4000/tasks');
+  });
+});
+
 describe('request', () => {
   afterEach(() => vi.unstubAllGlobals());
 
