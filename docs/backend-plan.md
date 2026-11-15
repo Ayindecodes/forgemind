@@ -89,12 +89,82 @@ inspects its basic structure, on a staging URL.
   when:_ MVP steps 1 and 2 and the basic inspection work on the staging
   URL.
 
+## Phase 2: Repository intelligence
+
+Milestone: an evidence-backed technical report for a real repository, with
+every finding pointing at a commit and a line.
+
+Four things hold for every task in it:
+
+- Everything is found by reading files. Nothing in a repository is run,
+  imported or installed, and no tool is used that loads a repository's own
+  configuration or plugins. Running anything waits for Phase 4.
+- A finding claims what was read and no more. Where what was matched is
+  itself the weakness, the finding is confirmed; where it is only a place
+  one could be, it is a suspicion and says so.
+- A credential found in a repository is copied nowhere: not into the
+  database, a log or a response. The finding says where it is and of what
+  kind.
+- Nothing about a repository leaves the machine to learn what is in it.
+  Advisories are downloaded and matched here.
+
+The tasks:
+
+- **BE-12 Findings, each at a commit.** A scan after the inspection, in the
+  same isolated checkout. What it raises is stored with the commit and the
+  line, and brought up to date each time the repository is indexed: found
+  again, it stays the one finding; no longer found, it is closed at the
+  commit that no longer has it; dismissed, it stays dismissed. A repository
+  is indexed again when its default branch moves. `GET /findings` per
+  organization, and a repository's open count from the same table. The
+  first scanner: committed credentials, which are private keys and tokens
+  in a format their issuer documents. _Done when:_ a private key committed
+  to a repository shows on the Security page at its commit and line, the
+  key itself stored nowhere, and the commit that removes it closes the
+  finding.
+- **BE-13 Dependencies as locked.** Lockfiles read for the versions they
+  pin, each with the file and line that pins it and whether a manifest asks
+  for it by name. The analysis lists what is locked, says so where only a
+  range is declared, and names the lockfiles it cannot read. _Done when:_
+  the dependencies shown for a real repository are the versions its
+  lockfiles pin, each opening at its line.
+- **BE-14 Known advisories.** OSV's public export kept on the machine,
+  refreshed on a schedule and dated; about 300 MB zipped for npm, PyPI, Go,
+  crates.io, RubyGems, Packagist and Maven on 2026-11-15. Locked versions
+  are matched against it here, by each ecosystem's own ordering of
+  versions. A match is flagged in the analysis and raised as a finding at
+  the line that pins it, with the advisory's id, its link and the severity
+  the advisory gives. A dependency with no locked version is a suspicion at
+  most, and an ecosystem that is not matched is said to be unchecked.
+  _Done when:_ a repository locking a version an advisory names shows it as
+  vulnerable with the advisory linked, the same repository on the fixed
+  version does not, and indexing either sends no package name off the
+  machine.
+- **BE-15 Source index.** Python, JavaScript and TypeScript parsed, not
+  run: for each file its lines, what it declares and where, and what it
+  imports. Kept per commit, so that a declaration can be found by name.
+  Modules are ranked by what imports them, and the summary says what was
+  measured. A file that cannot be parsed is named, not passed over. _Done
+  when:_ the modules and the summary of a real repository come from its
+  parsed source, and a declaration is found by name at the indexed commit.
+- **BE-16 Static analysis.** Rules over the parsed source: a command run
+  through a shell, text evaluated as code, unsafe deserialization, a
+  certificate check turned off, HTML set from a value, a query assembled
+  from text. Each rule is written down with what it claims and whether a
+  match is the weakness or a lead, and raises its finding with the rule,
+  the commit and the line. _Done when:_ every rule raises its finding on
+  code that has the weakness and none on the nearest safe form, and the
+  findings of a real repository open at the right lines.
+- **BE-17 The technical report.** The repository page as one report:
+  summary, structure, dependencies, findings and concerns, each statement
+  with the file and line it rests on, and what was not looked at said as
+  plainly as what was. The same report as a document to download, naming
+  the commit, the time, the scanners and the date of the advisories. _Done
+  when:_ on staging, the report of a real repository is read and
+  downloaded, and every finding in it opens at its commit and line.
+
 ## Later phases, at milestone level
 
-- **Phase 2 Repository intelligence.** Dependency analysis, source
-  indexing, repository summaries, static analysis and basic security
-  scanning. Milestone: an evidence-backed technical report for a real
-  repository, with every finding pointing at a commit and a line.
 - **Phase 3 Agent orchestration.** The task state machine persisted in
   PostgreSQL, the Architect, Developer, Testing and Review agents behind a
   provider-independent LLM layer, and event streaming from the workers.
