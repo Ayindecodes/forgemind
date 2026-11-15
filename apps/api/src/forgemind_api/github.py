@@ -648,7 +648,12 @@ class SimulatedGitHub:
                 f"This installs the ForgeMind GitHub App on the {account.account_type} "
                 f'{account.login}, for the ForgeMind organization "{organization}". '
                 "It asks only for what is listed below.",
-                [("Install", f"/auth/github/install/continue?{query}")],
+                [
+                    (
+                        "Install",
+                        f"{self.api_origin}/auth/github/install/continue?{query}",
+                    )
+                ],
                 permissions=APP_PERMISSIONS,
             )
 
@@ -670,7 +675,7 @@ class SimulatedGitHub:
                 actions.append(
                     (
                         f"Authorize as {persona.name} ({persona.login}{note})",
-                        f"/auth/github/authorize/continue?{query}",
+                        f"{self.api_origin}/auth/github/authorize/continue?{query}",
                     )
                 )
             return page(
