@@ -43,7 +43,7 @@ scripts/staging.sh deploy                             # every time
 1. builds the three images, each tagged with the commit;
 2. asks the new API image to read the settings as the API and as a worker would (`python -m forgemind_api check serve`), and stops here, with the names of the variables at fault and none of their values, if either would refuse to start;
 3. migrates the database, alone, so that a migration that fails leaves the release that is running as it was;
-4. starts the release and waits until the deployment answers as that commit through its own port;
+4. starts the release and waits until the deployment answers as that commit through its own port, with its worker and its sweeper running;
 5. removes the images of earlier releases.
 
 Until step 4 the release that is running is left alone: a deployment refused at step 2, or whose migration fails at step 3, replaces none of it. Step 3 starts PostgreSQL and Redis, and makes them again only if their own definition changed. A deploy is not seamless: requests are refused for a few seconds while containers are replaced, and between steps 3 and 4 the previous release runs on the new schema, so a migration has to be one the previous release can live with for that long.
@@ -113,7 +113,7 @@ The machine's own proxy keeps its own log, and is not covered by any of this.
 
 ## Checking a deployment
 
-`scripts/staging-check.sh`, a step of the gate, deploys the checkout as above with a directory, a project and ports of its own (4295 and 4296), behind a proxy that ends TLS with a certificate of its own making. It holds the deployment to what this page says: the directory's modes; the one loopback port and the closed network; the limits on memory and logs, and the users and capabilities of the containers; a database taken from empty, and from a revision behind, to the schema; the session cookie's flags; what the logs leave out; the password; the refusals; and, with GitHub itself as the provider and credentials made up for the purpose, which service holds which secret, where signing in starts and what a webhook is held to. In a browser, a person signs in, creates an organization, installs the App, connects a repository of the check's own making, waits for the worker to index it and reads its analysis.
+`scripts/staging-check.sh`, a step of the gate, deploys the checkout as above with a directory, a project and ports of its own (4295 and 4296), behind a proxy that ends TLS with a certificate of its own making. It holds the deployment to what this page says: the directory's modes; the one loopback port and the closed network; the limits on memory and logs, and the users and capabilities of the containers; a database taken from empty, and from a revision behind, to the schema; the session cookie's flags; what the logs leave out; the password; the refusals; and, with GitHub itself as the provider and credentials made up for the purpose, which service holds which secret, where signing in starts and what a webhook is held to. In a browser, a person signs in, creates an organization, installs the App, connects a repository of the check's own making, waits for the worker to index it and reads its analysis. The check says first which Docker and which Compose it ran with; it has passed with Compose 2.38.2 and with 5.6.0.
 
 The browser's part runs against any deployment that uses the simulated GitHub:
 
@@ -130,5 +130,6 @@ STAGING_URL=https://staging.example.com STAGING_REPOSITORY=owner/name \
 - **GitHub itself has not been exercised.** The check proves the settings, the secrets and the addresses of a deployment that speaks to GitHub, and that a webhook is held to its signature. No request has been made to github.com with a registered App, so the table above is what the code asks GitHub for and not what GitHub has been seen to grant.
 - **No TLS, no rate limit, no HSTS and no content security policy** at the edge. The first belongs to the machine's proxy; the others are not there.
 - **One machine, one of each service**, and a deploy that interrupts. Redis has no password and keeps nothing on disk: it is reachable only on the closed network, and a message it loses is queued again by the sweeper.
+- **No health check for the worker or the sweeper.** A deploy waits until both are running, which is all that is asked of them; whether the worker works is seen when it indexes a repository.
 - **No backups** of the database, and no collector for the traces and metrics unless `FORGEMIND_OTEL_ENDPOINT` names one.
 - **The build cache grows.** `deploy` removes the images of earlier releases and leaves Docker's build cache alone, since it is shared with everything else on the machine.
