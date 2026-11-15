@@ -10,6 +10,7 @@ import json
 import os
 from collections.abc import Mapping
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import (
@@ -25,6 +26,8 @@ Environment = Literal["development", "test", "staging", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
 ENV_PREFIX = "FORGEMIND_"
+# FORGEMIND_<NAME>_FILE names a file that holds the value of FORGEMIND_<NAME>.
+FILE_SUFFIX = "_FILE"
 
 
 class TokenPrice(BaseModel):
@@ -216,18 +219,49 @@ class SettingsError(RuntimeError):
     """Raised when the environment does not describe a usable configuration."""
 
 
-def load_settings(env: Mapping[str, str] | None = None) -> Settings:
-    """Read the settings from `env`, or from the process environment.
+def read_values(source: Mapping[str, str]) -> dict[str, str]:
+    """The settings `source` gives, by field name.
 
-    Only variables with the FORGEMIND_ prefix count. Raises SettingsError
-    naming every bad variable.
+    Only variables with the FORGEMIND_ prefix count. FORGEMIND_<NAME>_FILE
+    gives the value of FORGEMIND_<NAME> as the contents of a file, less the
+    line ending: that is how a secret is given without putting it in the
+    environment.
     """
-    source = os.environ if env is None else env
-    values = {
-        key[len(ENV_PREFIX) :].lower(): value
-        for key, value in source.items()
-        if key.startswith(ENV_PREFIX)
-    }
+    values: dict[str, str] = {}
+    from_files: dict[str, str] = {}
+    for key, value in source.items():
+        if not key.startswith(ENV_PREFIX):
+            continue
+        if key.endswith(FILE_SUFFIX):
+            from_files[key.removesuffix(FILE_SUFFIX)] = value
+        else:
+            values[key[len(ENV_PREFIX) :].lower()] = value
+    problems: list[str] = []
+    for variable, path in from_files.items():
+        name = variable[len(ENV_PREFIX) :].lower()
+        if name in values:
+            problems.append(f"{variable} and {variable}{FILE_SUFFIX} are both set")
+            continue
+        try:
+            content = Path(path).read_text().rstrip("\r\n")
+        except (OSError, UnicodeDecodeError) as error:
+            reason = error.strerror if isinstance(error, OSError) else "not text"
+            problems.append(f"{variable}{FILE_SUFFIX}: cannot read {path} ({reason})")
+            continue
+        if not content:
+            problems.append(f"{variable}{FILE_SUFFIX}: {path} is empty")
+            continue
+        values[name] = content
+    if problems:
+        raise SettingsError(f"invalid configuration: {', '.join(problems)}")
+    return values
+
+
+def load_settings(env: Mapping[str, str] | None = None) -> Settings:
+    """Read the settings from `env`, or from the process environment. Raises
+    SettingsError naming every bad variable.
+    """
+    values = read_values(os.environ if env is None else env)
     try:
         return Settings.model_validate(values)
     except ValidationError as error:
