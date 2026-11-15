@@ -1,0 +1,6 @@
+# What the machine's own Caddy needs to give the deployment a public address
+# with TLS: one site that passes everything on to the deployment's port.
+# Caddy gets and renews the certificate itself once the name resolves here.
+staging.example.com {
+	reverse_proxy 127.0.0.1:4300
+}
