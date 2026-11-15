@@ -1,5 +1,8 @@
 """What `python -m forgemind_api <command>` asks of its environment."""
 
+import subprocess
+import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -64,3 +67,30 @@ def test_check_reads_the_settings_a_command_would_and_does_nothing_more(
             "the github provider needs FORGEMIND_GITHUB_CLIENT_ID, "
             "FORGEMIND_GITHUB_CLIENT_SECRET, FORGEMIND_GITHUB_WEBHOOK_SECRET"
         )
+
+
+def test_settings_it_cannot_use_end_a_command_in_a_line_without_their_values(
+    tmp_path: Path,
+) -> None:
+    secret = tmp_path / "client_secret"
+    secret.write_text("swordfish\n")
+    ended = subprocess.run(
+        [sys.executable, "-m", "forgemind_api", "serve"],
+        env={
+            "FORGEMIND_ENVIRONMENT": "staging",
+            "FORGEMIND_DATABASE_URL": "postgres://fm:hunter2@db/fm",
+            "FORGEMIND_GITHUB_PROVIDER": "github",
+            "FORGEMIND_GITHUB_CLIENT_SECRET_FILE": str(secret),
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert ended.returncode == 2
+    assert ended.stdout == ""
+    assert ended.stderr.startswith("invalid configuration: FORGEMIND_DATABASE_URL: ")
+    assert ended.stderr.count("\n") == 1
+    assert "hunter2" not in ended.stderr
+    assert "swordfish" not in ended.stderr

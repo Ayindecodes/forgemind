@@ -69,5 +69,15 @@ def main(argv: list[str]) -> int:
     return 2
 
 
+def run(argv: list[str]) -> int:
+    """`main`, with settings it cannot use said in a line and not as a
+    traceback: the line names every variable at fault and none of the values."""
+    try:
+        return main(argv)
+    except SettingsError as error:
+        sys.stderr.write(f"{error}\n")
+        return 2
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(run(sys.argv[1:]))
