@@ -338,7 +338,8 @@ for service in api worker sweeper web edge postgres redis; do
     fail "the log of $service may grow without end"
 done
 for service in api worker sweeper web; do
-  [[ $(docker exec "$project-$service-1" id -u) != 0 ]] || fail "$service runs as root"
+  user=$(docker exec "$project-$service-1" id -u) || fail "$service is not running"
+  [[ $user != 0 ]] || fail "$service runs as root"
   [[ $(docker inspect -f '{{.HostConfig.CapDrop}} {{.HostConfig.SecurityOpt}}' "$project-$service-1") == "[ALL] [no-new-privileges:true]" ]] ||
     fail "$service keeps capabilities, or may gain them"
 done
