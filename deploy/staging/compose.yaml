@@ -1,0 +1,183 @@
+# The staging deployment: the interface, the API, a worker and the sweeper
+# with their PostgreSQL and Redis, behind one port on this machine's loopback
+# address. scripts/staging.sh drives it, giving the values asked for below,
+# and docs/staging.md explains it.
+name: forgemind-staging
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+# What every process made from the API's image has. The database's password
+# reaches it as a file; nothing secret is in an environment.
+x-api: &api
+  image: ${FORGEMIND_API_IMAGE:?scripts/staging.sh gives this}
+  pull_policy: never
+  restart: unless-stopped
+  logging: *logging
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  # Any setting of the API the deployment's own file gives. What is set below
+  # is the deployment's to decide and wins over it.
+  env_file:
+    - ${FORGEMIND_STAGING_ENV:?scripts/staging.sh gives this}
+  environment: &api-environment
+    FORGEMIND_ENVIRONMENT: staging
+    FORGEMIND_PORT: 4200
+    FORGEMIND_WEB_ORIGIN: ${FORGEMIND_PUBLIC_URL:?set it in staging.env}
+    FORGEMIND_API_ORIGIN: ${FORGEMIND_PUBLIC_URL:?set it in staging.env}/api
+    FORGEMIND_DATABASE_URL: postgresql+psycopg://forgemind@postgres:5432/forgemind
+    FORGEMIND_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+    FORGEMIND_REDIS_URL: redis://redis:6379/0
+  secrets:
+    - postgres_password
+  networks:
+    - default
+    - data
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: forgemind
+      POSTGRES_DB: forgemind
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U forgemind -d forgemind']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Only the queue: a message lost with it is queued again by the sweeper, so
+  # nothing here is kept across a restart.
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 128m
+    networks:
+      - data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Brings the database to this image's schema and ends. Everything that
+  # reads the database waits for it, so nothing runs against an older schema.
+  migrate:
+    <<: *api
+    command: ['python', '-m', 'forgemind_api', 'migrate']
+    restart: 'no'
+    mem_limit: 256m
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *api
+    mem_limit: 512m
+    environment:
+      <<: *api-environment
+      # Only the edge reaches this container, and it says for whom it asks
+      # and over what; the server takes its word for the scheme.
+      FORWARDED_ALLOW_IPS: '*'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Executes the runs and indexes the repositories the API queues.
+  worker:
+    <<: *api
+    command: ['python', '-m', 'forgemind_api', 'worker']
+    mem_limit: 1g
+    # The image's health check asks the API's port, which a worker has not got.
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Queues again the runs and the repositories whose worker went quiet or
+  # whose message was lost, and ends the ones that may not be tried again.
+  sweeper:
+    <<: *api
+    command: ['python', '-m', 'forgemind_api', 'sweeper']
+    mem_limit: 256m
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # The interface. Its scripts ask for the API at /api of whatever origin
+  # they were loaded from, so it is given nothing.
+  web:
+    image: ${FORGEMIND_WEB_IMAGE:?scripts/staging.sh gives this}
+    pull_policy: never
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 512m
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+
+  # The one door: /api is the API and everything else is the interface. It
+  # listens on this machine's loopback address only; the proxy that ends TLS
+  # for the public address passes requests on to it.
+  edge:
+    image: ${FORGEMIND_EDGE_IMAGE:?scripts/staging.sh gives this}
+    pull_policy: never
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 128m
+    cap_drop: [ALL]
+    # The image's binary asks for it whatever port it listens on.
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ['no-new-privileges:true']
+    ports:
+      - '127.0.0.1:${FORGEMIND_STAGING_PORT:-4300}:8080'
+    # It keeps nothing: no certificate is its to hold.
+    tmpfs:
+      - /data
+      - /config
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:2019/config/']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      - api
+      - web
+
+networks:
+  # PostgreSQL and Redis are on this network and no other: nothing outside
+  # the deployment reaches them, and they reach nothing outside it.
+  data:
+    internal: true
+
+volumes:
+  postgres:
+
+secrets:
+  postgres_password:
+    file: ${FORGEMIND_STAGING_SECRETS:?scripts/staging.sh gives this}/postgres_password
