@@ -1,0 +1,6 @@
+# A password asked of every visitor, laid over compose.yaml once
+# `scripts/staging.sh gate <user>` has written who may come in.
+services:
+  edge:
+    volumes:
+      - ${FORGEMIND_STAGING_GATE:?scripts/staging.sh gives this}:/etc/caddy/gate.caddy:ro
