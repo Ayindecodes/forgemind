@@ -1,0 +1,30 @@
+# GitHub itself in place of the simulated provider, laid over compose.yaml
+# when staging.env sets FORGEMIND_GITHUB_PROVIDER=github. The App's slug, its
+# id and its client id are in staging.env; its three secrets are files, and
+# each reaches only the processes that use it.
+services:
+  # Signs people in, reads what an installation grants, checks webhooks.
+  api:
+    environment:
+      FORGEMIND_GITHUB_CLIENT_SECRET_FILE: /run/secrets/github_client_secret
+      FORGEMIND_GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_private_key
+      FORGEMIND_GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
+    secrets:
+      - github_client_secret
+      - github_app_private_key
+      - github_webhook_secret
+
+  # Asks GitHub for the token it clones a repository with, and nothing else.
+  worker:
+    environment:
+      FORGEMIND_GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_private_key
+    secrets:
+      - github_app_private_key
+
+secrets:
+  github_client_secret:
+    file: ${FORGEMIND_STAGING_SECRETS:?scripts/staging.sh gives this}/github_client_secret
+  github_app_private_key:
+    file: ${FORGEMIND_STAGING_SECRETS:?scripts/staging.sh gives this}/github_app_private_key
+  github_webhook_secret:
+    file: ${FORGEMIND_STAGING_SECRETS:?scripts/staging.sh gives this}/github_webhook_secret
