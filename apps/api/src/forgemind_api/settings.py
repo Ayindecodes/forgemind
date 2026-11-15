@@ -11,7 +11,7 @@ import os
 from collections.abc import Mapping
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import (
     BaseModel,
@@ -21,6 +21,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 Environment = Literal["development", "test", "staging", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
@@ -79,6 +81,10 @@ class Settings(BaseModel):
     # postgresql+psycopg://user:password@host:port/database; required outside
     # development, where the service can start without a database.
     database_url: str | None = None
+    # The password of the URL's user, for a URL written without one, so that
+    # the password can be kept in a file of its own. It is put into
+    # `database_url`, which is what everything else reads.
+    database_password: str | None = None
     # Where browsers reach this service; sign-in redirects point back here.
     api_origin: str = "http://localhost:4200"
     # "simulated" serves GitHub look-alike pages for development and tests;
@@ -125,6 +131,35 @@ class Settings(BaseModel):
     # cost of usage is estimated from these, and reported as unavailable for
     # anything used that has no price here.
     prices: Prices = Prices()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _password_into_the_url(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        values = dict(cast("Mapping[str, Any]", data))
+        password = values.get("database_password")
+        url = values.get("database_url")
+        if password is None:
+            return values
+        if not isinstance(url, str) or not isinstance(password, str):
+            raise ValueError(
+                f"{ENV_PREFIX}DATABASE_PASSWORD needs {ENV_PREFIX}DATABASE_URL"
+            )
+        try:
+            parsed = make_url(url)
+        except ArgumentError:
+            # Said by the URL's own check, in its own words.
+            return values
+        if parsed.password is not None:
+            raise ValueError(
+                f"{ENV_PREFIX}DATABASE_URL already carries a password; "
+                f"leave it out there or do not set {ENV_PREFIX}DATABASE_PASSWORD"
+            )
+        values["database_url"] = parsed.set(password=password).render_as_string(
+            hide_password=False
+        )
+        return values
 
     @field_validator("prices", mode="before")
     @classmethod
