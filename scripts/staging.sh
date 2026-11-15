@@ -196,20 +196,33 @@ forget_earlier_images() {
   done
 }
 
-# Waits until the deployment answers, through its own port, as this release.
+# Whether a service's container is running.
+runs() {
+  [[ -n $(docker ps -q --filter "label=com.docker.compose.project=$project" \
+    --filter "label=com.docker.compose.service=$1" --filter status=running) ]]
+}
+
+# Waits until the deployment answers, through its own port, as this release,
+# and the worker and the sweeper, which answer nothing, are running. Not left
+# to `docker compose up --wait`: Compose 2.38 ends that in an error over a
+# service whose health check is turned off, as theirs is.
 answers() {
-  local health code
-  for _ in $(seq 1 60); do
+  local health code service stopped
+  for _ in $(seq 1 180); do
     health=$(curl -s "http://127.0.0.1:$port/api/health" || true)
     code=$(status_of /sign-in as-visitor)
+    stopped=
+    for service in worker sweeper; do
+      runs "$service" || stopped+=" $service"
+    done
     if grep -q '"status":"ok"' <<<"$health" &&
-      grep -qF "\"commit\":\"$release\"" <<<"$health" && [[ $code == 200 ]]; then
+      grep -qF "\"commit\":\"$release\"" <<<"$health" && [[ $code == 200 && -z $stopped ]]; then
       return 0
     fi
     sleep 1
   done
   echo "staging: the deployment does not answer as $release" >&2
-  echo "staging: /api/health said: ${health:-nothing}; /sign-in answered ${code:-nothing}" >&2
+  echo "staging: /api/health said: ${health:-nothing}; /sign-in answered ${code:-nothing}; not running:${stopped:- nothing}" >&2
   return 1
 }
 
@@ -249,7 +262,7 @@ deploy() {
 
   say "starting $release"
   printf '%s\n' "$release" >"$released"
-  if ! compose up -d --remove-orphans --wait --wait-timeout 180 || ! answers; then
+  if ! compose up -d --remove-orphans || ! answers; then
     compose ps -a >&2 || true
     compose logs --tail 40 api worker sweeper web edge >&2 || true
     die "the deployment of $release did not come up; what the services logged is above"
