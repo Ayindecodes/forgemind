@@ -1,0 +1,16 @@
+# Repositories of this machine's for the simulated provider to offer beside
+# its made-up ones, laid over compose.yaml when the deployment's directory
+# has a `repositories` directory. It is how a real repository is inspected
+# before a GitHub App is registered. They are read, never written.
+services:
+  api:
+    environment:
+      FORGEMIND_LOCAL_REPOSITORIES: /srv/repositories
+    volumes:
+      - ${FORGEMIND_STAGING_REPOSITORIES:?scripts/staging.sh gives this}:/srv/repositories:ro
+
+  worker:
+    environment:
+      FORGEMIND_LOCAL_REPOSITORIES: /srv/repositories
+    volumes:
+      - ${FORGEMIND_STAGING_REPOSITORIES:?scripts/staging.sh gives this}:/srv/repositories:ro
