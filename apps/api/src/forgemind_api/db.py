@@ -15,13 +15,16 @@ MIGRATIONS = Path(__file__).resolve().parent / "migrations"
 
 
 def make_engine(url: str) -> Engine:
-    """A pooled engine that notices dead connections and does not hang."""
+    """A pooled engine that notices dead connections, does not hang, and reads
+    every time in UTC whatever zone the database or its server is set to: the
+    contract's timestamps are UTC, and a time read in another zone would leave
+    here with that zone's offset."""
     return create_engine(
         url,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=5,
-        connect_args={"connect_timeout": 3},
+        connect_args={"connect_timeout": 3, "options": "-c timezone=UTC"},
     )
 
 
