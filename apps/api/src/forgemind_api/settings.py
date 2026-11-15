@@ -270,4 +270,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             f"{issue['msg']}"
             for issue in error.errors()
         )
-        raise SettingsError(f"invalid configuration: {problems}") from error
+        # Not `from error`: under it a traceback would print what the library
+        # was given, and a refused value may be a secret or hold one.
+        raise SettingsError(f"invalid configuration: {problems}") from None
