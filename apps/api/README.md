@@ -228,4 +228,5 @@ Compose file.
 
 From the repository root, `docker compose up` builds the service and starts
 the API, a worker and the sweeper with PostgreSQL and Redis on localhost-only
-ports.
+ports. That is for local work. A staging deployment is `scripts/staging.sh`,
+described in `docs/staging.md`.
