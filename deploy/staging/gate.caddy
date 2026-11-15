@@ -1,0 +1,2 @@
+# No password is asked of a visitor. `scripts/staging.sh gate <user>` writes
+# a file that asks for one, and the deployment puts that file here.

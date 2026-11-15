@@ -1,0 +1,48 @@
+# The one door of the staging deployment: /api is the API, with the prefix
+# taken off, and everything else is the interface.
+{
+	# In front of this is a proxy on the same machine that ends TLS. What it
+	# says of who is asking, and over what, is passed on.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+:8080 {
+	# Empty unless the deployment asks every visitor for a password.
+	import gate.caddy
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	request_body {
+		max_size 10MB
+	}
+
+	encode zstd gzip
+
+	handle_path /api/* {
+		reverse_proxy api:4200
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	# A line keeps the path of a request and not its query, and the same of
+	# the page that sent it and of the address it is sent on to: on the way
+	# back from GitHub each holds the code a sign-in is completed with.
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>uri regexp \?.* ""
+			request>headers>Referer regexp \?.* ""
+			resp_headers>Location regexp \?.* ""
+		}
+	}
+}
