@@ -238,6 +238,8 @@ release=$(git -C "$root" rev-parse HEAD)
 if [[ -n $(git -C "$root" status --porcelain) ]]; then
   release+=-dirty
 fi
+# Said first: what Compose does with a deployment has differed between versions.
+echo "with Docker $(docker version --format '{{.Server.Version}}') and Compose $(docker compose version --short)"
 
 echo "## the deployment's directory is made closed to other users, and once"
 "$staging" init "$site" "$edge_port" >/dev/null
