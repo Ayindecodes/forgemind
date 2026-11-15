@@ -50,6 +50,12 @@ def configure_logging(level: str) -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     root.addHandler(handler)
-    for noisy in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+    for noisy in ("uvicorn", "uvicorn.error"):
         logging.getLogger(noisy).handlers.clear()
         logging.getLogger(noisy).propagate = True
+    # The server's own line for a request stays unwritten: it repeats the
+    # app's without the request's id, and adds the query string, which may
+    # hold what only the caller should.
+    access = logging.getLogger("uvicorn.access")
+    access.handlers.clear()
+    access.propagate = False

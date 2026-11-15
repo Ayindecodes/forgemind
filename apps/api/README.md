@@ -172,7 +172,8 @@ delivery a worker handles, `forgemind.execute_run` or
   request id comes from the `x-request-id` header or is made up, is returned
   in the response, and travels with the queue message, so a worker's lines
   about a run name the request that asked for it. A sweep that found nothing
-  to do is logged at `DEBUG`.
+  to do is logged at `DEBUG`. A request's line holds its path and not its
+  query, and the server under the app writes no line of its own.
 
 Traces and metrics are recorded always and sent only when
 `FORGEMIND_OTEL_ENDPOINT` names an OTLP/HTTP collector, such as

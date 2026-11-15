@@ -3,7 +3,7 @@ import logging
 
 from opentelemetry.sdk.trace import TracerProvider
 
-from forgemind_api.logging import JsonFormatter, request_id_var
+from forgemind_api.logging import JsonFormatter, configure_logging, request_id_var
 
 
 def test_log_lines_are_json_with_the_request_id() -> None:
@@ -36,3 +36,22 @@ def test_a_line_written_inside_a_span_names_the_span_and_its_trace() -> None:
     assert line["trace_id"] == format(context.trace_id, "032x")
     assert line["span_id"] == format(context.span_id, "016x")
     assert (len(line["trace_id"]), len(line["span_id"])) == (32, 16)
+
+
+def test_the_server_writes_no_line_of_its_own_for_a_request() -> None:
+    access = logging.getLogger("uvicorn.access")
+    errors = logging.getLogger("uvicorn.error")
+    # As the server leaves them when it is told to keep no access log.
+    access.propagate = False
+    errors.propagate = False
+
+    configure_logging("INFO")
+
+    # The server asks this before it writes a request's line, query string
+    # and all. The app writes its own, with the request's id and the path.
+    assert not access.hasHandlers()
+    # What the server says of itself is still written, as every line is.
+    assert errors.hasHandlers()
+    assert [type(handler.formatter) for handler in logging.getLogger().handlers] == [
+        JsonFormatter
+    ]
