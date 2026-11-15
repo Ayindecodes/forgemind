@@ -1,0 +1,18 @@
+# What the interface's image is built from: the workspace's manifests, this
+# application and the contract it imports. Nothing else in the repository
+# reaches the build.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!apps/web
+!packages/contract
+**/node_modules
+**/.next
+**/*.tsbuildinfo
+apps/web/e2e
+apps/web/staging
+apps/web/test-results
+apps/web/playwright-report
+apps/web/playwright*.ts
