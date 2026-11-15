@@ -28,6 +28,10 @@ The web app runs on http://localhost:3200 and the dev API on http://localhost:40
 
 [docs/backend-plan.md](docs/backend-plan.md) is the plan for the next phase: the real API, workers and sandboxes behind the same contract.
 
+## Staging
+
+`scripts/staging.sh` runs the interface, the API, a worker and the sweeper with their PostgreSQL and Redis on one machine, built from the commit that is checked out and reached through one port on the loopback address. [docs/staging.md](docs/staging.md) says how it is deployed, what it keeps secret and what it does not do yet.
+
 ## Commands
 
 | Command            | What it does                                               |
