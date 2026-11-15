@@ -5,8 +5,11 @@ Autonomous software engineering and repository intelligence platform.
 ## Layout
 
 - `apps/web`: the Next.js frontend.
-- `apps/dev-api`: a development API that implements the contract until the real backend exists. It is never deployed.
+- `apps/api`: the API, its workers and its sweeper, in Python on PostgreSQL and Redis.
+- `apps/dev-api`: a development API that plays the contract with made-up data, for local work on the interface. It is never deployed.
 - `packages/contract`: the Zod schemas shared by the frontend and the API.
+- `packages/conformance`: holds a running service to the contract.
+- `deploy/staging`: what a staging deployment runs.
 
 ## Getting started
 
