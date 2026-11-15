@@ -60,7 +60,9 @@ def database_reachable(engine: Engine) -> bool:
 def alembic_config(url: str) -> Config:
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS))
-    config.set_main_option("sqlalchemy.url", url)
+    # Alembic reads a percent sign as the start of a reference to another
+    # option, and a password a URL has to escape is written with them.
+    config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
     return config
 
 

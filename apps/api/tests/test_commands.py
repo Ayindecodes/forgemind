@@ -3,16 +3,22 @@ revision `migrate` stops at."""
 
 import subprocess
 import sys
+import uuid
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 import uvicorn
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.pool import NullPool
 
 from forgemind_api.__main__ import main
-from forgemind_api.settings import SettingsError
+from forgemind_api.settings import SettingsError, load_settings
+
+# Every character of it means something in a URL.
+PASSWORD = "p@ss/w:rd#? %41"
 
 
 def schema(url: str) -> tuple[str, set[str]]:
@@ -27,6 +33,29 @@ def schema(url: str) -> tuple[str, set[str]]:
         return revision, {column["name"] for column in columns}
     finally:
         engine.dispose()
+
+
+@pytest.fixture
+def guarded_database_url(database_url: str) -> Iterator[str]:
+    """The URL, without the password, of an empty database whose owner has
+    PASSWORD. Both are dropped afterwards."""
+    name = f"forgemind_{uuid.uuid4().hex[:12]}"
+    admin = create_engine(
+        database_url, isolation_level="AUTOCOMMIT", poolclass=NullPool
+    )
+    with admin.connect() as connection:
+        # The driver reads a percent sign as a parameter's place.
+        password = PASSWORD.replace("%", "%%")
+        connection.exec_driver_sql(f"CREATE ROLE {name} LOGIN PASSWORD '{password}'")
+        connection.exec_driver_sql(f"CREATE DATABASE {name} OWNER {name}")
+    server = make_url(database_url)
+    yield URL.create(
+        server.drivername, name, host=server.host, port=server.port, database=name
+    ).render_as_string()
+    with admin.connect() as connection:
+        connection.exec_driver_sql(f"DROP DATABASE {name} WITH (FORCE)")
+        connection.exec_driver_sql(f"DROP ROLE {name}")
+    admin.dispose()
 
 
 def test_migrate_stops_at_the_revision_it_is_given(
@@ -45,6 +74,21 @@ def test_migrate_stops_at_the_revision_it_is_given(
     revision, columns = schema(empty_database_url)
     assert revision == "0006"
     assert "event_seq" in columns
+
+
+def test_migrate_reaches_a_database_whose_password_a_url_must_escape(
+    guarded_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FORGEMIND_ENVIRONMENT", "test")
+    monkeypatch.setenv("FORGEMIND_DATABASE_URL", guarded_database_url)
+    monkeypatch.setenv("FORGEMIND_DATABASE_PASSWORD", PASSWORD)
+
+    assert main(["migrate"]) == 0
+
+    url = load_settings().database_url
+    assert url is not None and make_url(url).password == PASSWORD
+    revision, _ = schema(url)
+    assert revision == "0006"
 
 
 def test_each_command_asks_for_the_github_credentials_it_uses(
