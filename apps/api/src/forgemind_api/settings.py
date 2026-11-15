@@ -18,6 +18,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -30,6 +31,26 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 ENV_PREFIX = "FORGEMIND_"
 # FORGEMIND_<NAME>_FILE names a file that holds the value of FORGEMIND_<NAME>.
 FILE_SUFFIX = "_FILE"
+
+# What a process is, for what it has to be given. The API signs people in,
+# reads what an installation grants and checks webhooks; a worker only asks
+# GitHub for the token it clones with; nothing else speaks to GitHub.
+Process = Literal["api", "worker", "other"]
+
+# The GitHub credentials each kind of process needs with the github provider.
+# A process asks for these and no others, so a deployment can keep each
+# secret to the processes that use it.
+GITHUB_NEEDS: dict[Process, tuple[str, ...]] = {
+    "api": (
+        "GITHUB_CLIENT_ID",
+        "GITHUB_CLIENT_SECRET",
+        "GITHUB_APP_ID",
+        "GITHUB_APP_PRIVATE_KEY",
+        "GITHUB_WEBHOOK_SECRET",
+    ),
+    "worker": ("GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY"),
+    "other": (),
+}
 
 
 class TokenPrice(BaseModel):
@@ -222,20 +243,17 @@ class Settings(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _github_credentials(self) -> Settings:
+    def _github_credentials(self, info: ValidationInfo) -> Settings:
         if self.environment == "production" and self.github_provider != "github":
             raise ValueError("production must use the github provider")
         if self.github_provider == "github":
+            # Built directly, the settings are the API's: it needs them all.
+            context: dict[str, Any] = info.context or {}
+            process: Process = context.get("process", "api")
             missing = [
                 name
-                for name, value in (
-                    ("GITHUB_CLIENT_ID", self.github_client_id),
-                    ("GITHUB_CLIENT_SECRET", self.github_client_secret),
-                    ("GITHUB_APP_ID", self.github_app_id),
-                    ("GITHUB_APP_PRIVATE_KEY", self.github_app_private_key),
-                    ("GITHUB_WEBHOOK_SECRET", self.github_webhook_secret),
-                )
-                if not value
+                for name in GITHUB_NEEDS[process]
+                if not getattr(self, name.lower())
             ]
             if missing:
                 raise ValueError(
@@ -292,13 +310,16 @@ def read_values(source: Mapping[str, str]) -> dict[str, str]:
     return values
 
 
-def load_settings(env: Mapping[str, str] | None = None) -> Settings:
-    """Read the settings from `env`, or from the process environment. Raises
-    SettingsError naming every bad variable.
+def load_settings(
+    env: Mapping[str, str] | None = None, process: Process = "api"
+) -> Settings:
+    """Read the settings from `env`, or from the process environment, for the
+    kind of process that is starting. Raises SettingsError naming every bad
+    variable.
     """
     values = read_values(os.environ if env is None else env)
     try:
-        return Settings.model_validate(values)
+        return Settings.model_validate(values, context={"process": process})
     except ValidationError as error:
         problems = ", ".join(
             f"{ENV_PREFIX}{'.'.join(str(part) for part in issue['loc']).upper()}: "
