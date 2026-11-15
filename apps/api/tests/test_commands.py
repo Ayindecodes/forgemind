@@ -1,4 +1,5 @@
-"""What `python -m forgemind_api <command>` asks of its environment."""
+"""What `python -m forgemind_api <command>` asks of its environment, and the
+revision `migrate` stops at."""
 
 import subprocess
 import sys
@@ -7,9 +8,43 @@ from typing import Any
 
 import pytest
 import uvicorn
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.pool import NullPool
 
 from forgemind_api.__main__ import main
 from forgemind_api.settings import SettingsError
+
+
+def schema(url: str) -> tuple[str, set[str]]:
+    """The revision the database at `url` is at, and what a usage record has."""
+    engine = create_engine(url, poolclass=NullPool)
+    try:
+        with engine.connect() as connection:
+            revision = connection.execute(
+                text("select version_num from alembic_version")
+            ).scalar_one()
+        columns = inspect(engine).get_columns("usage_records")
+        return revision, {column["name"] for column in columns}
+    finally:
+        engine.dispose()
+
+
+def test_migrate_stops_at_the_revision_it_is_given(
+    empty_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FORGEMIND_ENVIRONMENT", "test")
+    monkeypatch.setenv("FORGEMIND_DATABASE_URL", empty_database_url)
+
+    assert main(["migrate", "0005"]) == 0
+    revision, columns = schema(empty_database_url)
+    assert revision == "0005"
+    assert "quantity" in columns and "event_seq" not in columns
+
+    # With none, it goes on to the newest, from wherever the database is.
+    assert main(["migrate"]) == 0
+    revision, columns = schema(empty_database_url)
+    assert revision == "0006"
+    assert "event_seq" in columns
 
 
 def test_each_command_asks_for_the_github_credentials_it_uses(

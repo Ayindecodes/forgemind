@@ -1,9 +1,9 @@
 """`python -m forgemind_api serve` serves the API; `migrate` brings the database
-to the current schema; `worker` executes runs from the queue; `sweeper` looks
-after runs that lost their worker; `usage-check` compares the usage ledger
-with the events it was written from; `check <command>` reads the settings as
-that command would and does nothing more. All read their settings from the
-environment."""
+to the current schema, or to the revision named after it; `worker` executes
+runs from the queue; `sweeper` looks after runs that lost their worker;
+`usage-check` compares the usage ledger with the events it was written from;
+`check <command>` reads the settings as that command would and does nothing
+more. All read their settings from the environment."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def main(argv: list[str]) -> int:
     if command == "migrate":
         if settings.database_url is None:
             raise SettingsError("FORGEMIND_DATABASE_URL is required to migrate")
-        migrate(settings.database_url)
+        migrate(settings.database_url, *argv[1:2])
         return 0
     if command == "seed":
         if settings.database_url is None:
