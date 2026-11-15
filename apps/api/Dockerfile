@@ -8,7 +8,6 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 FROM python:3.13-slim-bookworm
-ARG COMMIT=unknown
 # git clones the repositories a worker indexes. Nothing in them is run.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates \
@@ -17,6 +16,8 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build --chown=forgemind:forgemind /app /app
 USER forgemind
+# Named this late so that a new commit rebuilds nothing above.
+ARG COMMIT=unknown
 ENV PATH="/app/.venv/bin:$PATH" FORGEMIND_COMMIT=$COMMIT FORGEMIND_PORT=4200
 EXPOSE 4200
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s \
