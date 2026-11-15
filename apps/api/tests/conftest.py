@@ -92,6 +92,15 @@ def own_database_url(database_url: str, template_database: str) -> Iterator[str]
 
 
 @pytest.fixture
+def empty_database_url(database_url: str) -> Iterator[str]:
+    """A database with nothing in it, not even a schema, dropped afterwards."""
+    name = f"forgemind_{uuid.uuid4().hex[:12]}"
+    _administer(database_url, f"CREATE DATABASE {name}")
+    yield _named(database_url, name)
+    _administer(database_url, f"DROP DATABASE {name} WITH (FORCE)")
+
+
+@pytest.fixture
 def sessions(own_database_url: str) -> Iterator[sessionmaker[Session]]:
     engine = make_engine(own_database_url)
     yield make_session_factory(engine)

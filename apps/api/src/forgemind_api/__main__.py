@@ -12,14 +12,18 @@ import uvicorn
 
 from forgemind_api.db import make_engine, migrate
 from forgemind_api.seed import seed
-from forgemind_api.settings import SettingsError, load_settings
+from forgemind_api.settings import Process, SettingsError, load_settings
 from forgemind_api.usage import check_usage
 from forgemind_api.worker import run_sweeper, run_worker
+
+# What each command is, for the credentials it must be given. Every other
+# command is given none.
+PROCESSES: dict[str, Process] = {"serve": "api", "worker": "worker"}
 
 
 def main(argv: list[str]) -> int:
     command = argv[0] if argv else "serve"
-    settings = load_settings()
+    settings = load_settings(process=PROCESSES.get(command, "other"))
     if command == "migrate":
         if settings.database_url is None:
             raise SettingsError("FORGEMIND_DATABASE_URL is required to migrate")
