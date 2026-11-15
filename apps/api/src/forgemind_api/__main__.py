@@ -1,7 +1,8 @@
 """`python -m forgemind_api serve` serves the API; `migrate` brings the database
 to the current schema; `worker` executes runs from the queue; `sweeper` looks
 after runs that lost their worker; `usage-check` compares the usage ledger
-with the events it was written from. All read their settings from the
+with the events it was written from; `check <command>` reads the settings as
+that command would and does nothing more. All read their settings from the
 environment."""
 
 from __future__ import annotations
@@ -23,7 +24,13 @@ PROCESSES: dict[str, Process] = {"serve": "api", "worker": "worker"}
 
 def main(argv: list[str]) -> int:
     command = argv[0] if argv else "serve"
+    # A deployment asks this before it replaces what is running.
+    only_check = command == "check"
+    if only_check:
+        command = argv[1] if len(argv) > 1 else "serve"
     settings = load_settings(process=PROCESSES.get(command, "other"))
+    if only_check:
+        return 0
     if command == "migrate":
         if settings.database_url is None:
             raise SettingsError("FORGEMIND_DATABASE_URL is required to migrate")
@@ -56,8 +63,8 @@ def main(argv: list[str]) -> int:
         finally:
             engine.dispose()
     sys.stderr.write(
-        f"unknown command {command!r}; use serve, migrate, seed, worker, sweeper "
-        "or usage-check\n"
+        f"unknown command {command!r}; use serve, migrate, seed, worker, sweeper, "
+        "usage-check or check\n"
     )
     return 2
 
