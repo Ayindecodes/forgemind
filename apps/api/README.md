@@ -11,11 +11,12 @@ uv run pytest           # unit tests
 uv run ruff check .     # lint
 uv run pyright          # types
 uv run python -m forgemind_api serve     # serve on FORGEMIND_PORT, 4200 by default
-uv run python -m forgemind_api migrate   # bring FORGEMIND_DATABASE_URL to the current schema
+uv run python -m forgemind_api migrate   # bring FORGEMIND_DATABASE_URL to the current schema, or to the revision named after it
 uv run python -m forgemind_api seed      # development and test only: a known organization and fixed tokens
 uv run python -m forgemind_api worker    # execute the runs and index the repositories on the queue at FORGEMIND_REDIS_URL
 uv run python -m forgemind_api sweeper   # queue again what lost its worker or its message
 uv run python -m forgemind_api usage-check   # compare the usage ledger with the events it was written from
+uv run python -m forgemind_api check worker  # read the settings as `worker` would, and do nothing more
 ```
 
 The worker and the seed clone repositories, so they need `git` and
@@ -23,12 +24,45 @@ coreutils' `timeout` on the PATH. The image has both.
 
 Sign-in goes through GitHub. `FORGEMIND_GITHUB_PROVIDER=simulated`, the default
 outside production, serves GitHub look-alike pages instead, so the interface and
-the tests can sign in without credentials; `github` needs
-`FORGEMIND_GITHUB_CLIENT_ID` and `FORGEMIND_GITHUB_CLIENT_SECRET`.
+the tests can sign in without credentials; `github` needs the App's
+credentials, listed under Settings below.
 
 The schema lives in `src/forgemind_api/models` and its migrations in
 `src/forgemind_api/migrations`, generated with Alembic and reviewed. The
 database tests start a throwaway PostgreSQL in Docker through testcontainers.
+
+## Settings
+
+Every setting is a `FORGEMIND_` variable, read once when a process starts
+(`src/forgemind_api/settings.py`). A process that cannot use what it was
+given says so in one line, naming every variable at fault and none of the
+values, and exits 2. `check <command>` does that reading and nothing else, so
+a deployment can ask before it replaces what is running.
+
+- **Secrets as files.** `FORGEMIND_<NAME>_FILE` names a file that holds the
+  value of `FORGEMIND_<NAME>`, less its line ending. Setting both, or naming
+  a file that is missing, unreadable or empty, is refused.
+- **The database's password** can be kept out of the URL:
+  `FORGEMIND_DATABASE_PASSWORD`, or its `_FILE`, is put into a
+  `FORGEMIND_DATABASE_URL` written without one. Whatever the password holds
+  is escaped. A URL that already carries a password is refused beside it.
+- **GitHub's credentials, by process.** With the `github` provider the API
+  needs `FORGEMIND_GITHUB_CLIENT_ID`, `_CLIENT_SECRET`, `_APP_ID`,
+  `_APP_PRIVATE_KEY` and `_WEBHOOK_SECRET`; a worker needs the App's id and
+  its private key, for the token it clones with; the sweeper and the other
+  commands need none, and are not refused for lacking them.
+- **Served under a path.** `FORGEMIND_API_ORIGIN` is where browsers reach
+  the API. When a proxy serves it under a path and takes the path off, as in
+  `https://staging.example.com/api`, the origin says so: the links the API
+  writes, its OpenAPI document and the simulated GitHub's pages then point
+  through the proxy, and the log names a path as the browser asked for it.
+- **Times are UTC.** Every connection reads times in UTC, whatever zone the
+  database or its server is set to.
+
+`tests/test_settings_files.py`, `tests/test_settings_database.py`,
+`tests/test_settings_github.py` and `tests/test_commands.py` cover the
+reading, `tests/test_served_under_a_path.py` the path and
+`tests/test_time_zone.py` the zone.
 
 ## Workers
 
