@@ -8,6 +8,7 @@ more. All read their settings from the environment."""
 from __future__ import annotations
 
 import sys
+from urllib.parse import urlsplit
 
 import uvicorn
 
@@ -46,6 +47,10 @@ def main(argv: list[str]) -> int:
             "forgemind_api.app:app",
             host="0.0.0.0",  # the container is the boundary
             port=settings.port,
+            # The path a proxy serves the API under and takes off before it
+            # passes a request on, so that what the API says of itself, and
+            # the pages that read it, point where a browser can follow.
+            root_path=urlsplit(settings.api_origin).path,
             log_config=None,
             access_log=False,  # the app logs each request itself, with its id
         )

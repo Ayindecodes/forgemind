@@ -173,3 +173,23 @@ def test_settings_it_cannot_use_end_a_command_in_a_line_without_their_values(
     assert ended.stderr.count("\n") == 1
     assert "hunter2" not in ended.stderr
     assert "swordfish" not in ended.stderr
+
+
+@pytest.mark.parametrize(
+    ("origin", "path"),
+    [
+        ("https://staging.example.com/api", "/api"),
+        ("https://api.example.com", ""),
+        ("http://localhost:4200", ""),
+    ],
+)
+def test_serve_tells_the_server_the_path_it_is_reached_under(
+    origin: str, path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served: dict[str, Any] = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **options: served.update(options))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setenv("FORGEMIND_API_ORIGIN", origin)
+
+    assert main(["serve"]) == 0
+    assert served["root_path"] == path
+    assert served["port"] == 4200

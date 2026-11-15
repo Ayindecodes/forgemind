@@ -107,6 +107,8 @@ class Settings(BaseModel):
     # `database_url`, which is what everything else reads.
     database_password: str | None = None
     # Where browsers reach this service; sign-in redirects point back here.
+    # With a path when a proxy serves it under one and takes the path off,
+    # as in https://staging.example.com/api.
     api_origin: str = "http://localhost:4200"
     # "simulated" serves GitHub look-alike pages for development and tests;
     # "github" talks to GitHub and needs the App's OAuth client.
