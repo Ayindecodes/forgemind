@@ -36,7 +36,7 @@ from forgemind_api.indexing import (
     indexing_heartbeat,
     sweep_indexing,
 )
-from forgemind_api.inspection import Inspection, inspect_tree
+from forgemind_api.inspection import inspect_tree
 from forgemind_api.leases import Heartbeat
 from forgemind_api.models import Repository, RepositoryAnalysis
 from forgemind_api.queue import Dispatcher
@@ -49,6 +49,7 @@ from forgemind_api.repositories import (
 )
 from forgemind_api.settings import Settings
 from forgemind_api.simulated_repositories import TREES
+from forgemind_api.survey import Survey, survey
 from forgemind_api.workspace import (
     PREFIX,
     STALE_MARGIN_SECONDS,
@@ -523,12 +524,12 @@ def test_a_worker_that_learns_it_lost_the_repository_reads_no_further(
         beating.append(indexing_heartbeat(sessions, repository_id, holder, seconds))
         return beating[-1]
 
-    def inspect(tree: Path) -> Inspection:
+    def read_it(tree: Path) -> Survey:
         read.append(tree)
-        return inspect_tree(tree)
+        return survey(tree)
 
     monkeypatch.setattr(indexing, "indexing_heartbeat", heartbeat)
-    monkeypatch.setattr(indexing, "inspect_tree", inspect)
+    monkeypatch.setattr(indexing, "survey", read_it)
     repository_id = connect(sessions, github)
 
     def lose() -> None:

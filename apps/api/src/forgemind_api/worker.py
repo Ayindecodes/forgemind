@@ -39,7 +39,7 @@ from forgemind_api.execution import (
     run_view,
 )
 from forgemind_api.github import GitHubProvider, make_provider
-from forgemind_api.indexing import index_repository, sweep_indexing
+from forgemind_api.indexing import READING_SECONDS, index_repository, sweep_indexing
 from forgemind_api.leases import Heartbeat, Sessions, new_worker_id
 from forgemind_api.logging import configure_logging, request_id_var
 from forgemind_api.models import Run, Task
@@ -658,12 +658,13 @@ def build_worker(
             )
         return verdict
 
-    # A clone that outlasts its own time limit by a minute is ended with the
-    # process it runs in; the sweeper then sees the repository abandoned.
+    # A delivery that outlasts the time a clone has and the time reading it
+    # has is ended with the process it runs in; the sweeper then sees the
+    # repository abandoned.
     @celery.task(
         name=INDEX_REPOSITORY,
         bind=True,
-        time_limit=math.ceil(settings.indexing_seconds) + 60,
+        time_limit=math.ceil(settings.indexing_seconds) + READING_SECONDS,
     )
     def index(task: Any, repository_id: str) -> str:  # pyright: ignore[reportUnusedFunction]
         with delivery(

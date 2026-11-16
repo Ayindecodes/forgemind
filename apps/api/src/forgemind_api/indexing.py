@@ -2,8 +2,8 @@
 
 A repository that is "analyzing" waits for a worker. The worker clones it at
 the commit its default branch is at, into a workspace nothing can write to,
-inspects the files without running any of them, and stores what it found
-against that commit.
+inspects and scans the files without running any of them, and stores what it
+found against that commit.
 
 As with runs, the queue only delivers the request and the database decides
 who works on it. A request may be lost, repeated or late without a repository
@@ -28,12 +28,15 @@ from sqlalchemy.orm import Session as DbSession
 from forgemind_api import workspace
 from forgemind_api.auth import now
 from forgemind_api.db import after_commit
+from forgemind_api.findings import record_findings
 from forgemind_api.github import GitHubProvider
-from forgemind_api.inspection import Inspection, inspect_tree
+from forgemind_api.inspection import Inspection
 from forgemind_api.leases import Heartbeat, Sessions, new_worker_id
 from forgemind_api.models import GitHubInstallation, Repository, RepositoryAnalysis
 from forgemind_api.queue import Dispatcher
+from forgemind_api.scanning import Scanned
 from forgemind_api.settings import Settings
+from forgemind_api.survey import survey
 from forgemind_api.workspace import RepositoryUnavailable
 
 log = logging.getLogger("forgemind_api.indexing")
@@ -44,6 +47,11 @@ NOT_INSTALLED = (
     "cannot be read."
 )
 INTERNAL = "Indexing stopped on an internal error."
+
+# How long reading a checkout may take once it is there, before the delivery
+# is ended with the process it runs in. The inspection and the scans bound
+# what they read and how long they read keys for, to well within it.
+READING_SECONDS = 120
 
 # What a delivery came to: the repository was indexed; it cannot be, and says
 # why; this attempt failed and another is due; another worker holds it; it is
@@ -69,6 +77,7 @@ class Found:
     files: int
     size: int
     inspection: Inspection
+    scans: tuple[Scanned, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -224,8 +233,8 @@ def read_repository(
     provider: GitHubProvider,
     lost: threading.Event,
 ) -> Found:
-    """Clones the repository at the commit its default branch is at and
-    inspects the files. Nothing in the repository is run."""
+    """Clones the repository at the commit its default branch is at, and
+    inspects and scans the files. Nothing in the repository is run."""
     workspace.remove_stale(settings.workspace_root, settings.indexing_seconds)
     with (
         provider.clone_access(claimed.installation_id, claimed.full_name) as source,
@@ -239,11 +248,13 @@ def read_repository(
     ):
         if lost.is_set():
             raise NoLongerHeld
+        found = survey(checked_out.path)
         return Found(
             commit=checked_out.commit,
             files=checked_out.files,
             size=checked_out.size,
-            inspection=inspect_tree(checked_out.path),
+            inspection=found.inspection,
+            scans=found.scans,
         )
 
 
@@ -298,6 +309,7 @@ def conclude(
             return "lost"
         if isinstance(outcome, Found):
             record_analysis(db, repo, outcome.commit, outcome.inspection, stamp)
+            record_findings(db, repo, outcome.commit, outcome.scans, stamp)
             repo.status = "connected"
             repo.status_message = None
             release(repo)
@@ -389,7 +401,12 @@ def index_repository(
             "seconds": round(time.monotonic() - began, 3),
         }
         if isinstance(outcome, Found):
-            extra.update(commit=outcome.commit, files=outcome.files, bytes=outcome.size)
+            extra.update(
+                commit=outcome.commit,
+                files=outcome.files,
+                bytes=outcome.size,
+                raised=sum(len(scanned.raised) for scanned in outcome.scans),
+            )
         else:
             extra.update(reason=outcome.reason)
         log.info("indexing attempt ended", extra=extra)
