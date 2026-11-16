@@ -82,8 +82,9 @@ Anyone with an account on the machine can reach the port directly, and can say w
 | Webhook URL            | `<public-url>/api/github/webhooks`                                                     |
 | Webhook secret         | what `secrets/github_webhook_secret` holds                                             |
 | Repository permissions | Metadata: read. Contents, Pull requests: read and write. Checks: read. Webhooks: read. |
+| Subscribe to events    | Push                                                                                   |
 
-The API asks GitHub for the signed-in person's profile and, when the profile shows no address, for their email addresses. Of the deliveries that carry the right signature it acts on an `installation` that is deleted, suspended or unsuspended and on repositories removed from one (`installation_repositories`), and answers every other with `202` and does nothing.
+The API asks GitHub for the signed-in person's profile and, when the profile shows no address, for their email addresses. Of the deliveries that carry the right signature it acts on an `installation` that is deleted, suspended or unsuspended, on repositories removed from one (`installation_repositories`), and on a `push` that moves a connected repository's default branch, which has the repository indexed again; it answers every other with `202` and does nothing.
 
 Then put the App's client secret, its private key and the webhook secret in `secrets/` as `github_client_secret`, `github_app_private_key` and `github_webhook_secret`, readable as the others are (`chmod 644`), and name the App in `staging.env`:
 
@@ -113,7 +114,7 @@ The machine's own proxy keeps its own log, and is not covered by any of this.
 
 ## Checking a deployment
 
-`scripts/staging-check.sh`, a step of the gate, deploys the checkout as above with a directory, a project and ports of its own (4295 and 4296), behind a proxy that ends TLS with a certificate of its own making. It holds the deployment to what this page says: the directory's modes; the one loopback port and the closed network; the limits on memory and logs, and the users and capabilities of the containers; a database taken from empty, and from a revision behind, to the schema; the session cookie's flags; what the logs leave out; the password; the refusals; and, with GitHub itself as the provider and credentials made up for the purpose, which service holds which secret, where signing in starts and what a webhook is held to. In a browser, a person signs in, creates an organization, installs the App, connects a repository of the check's own making, waits for the worker to index it and reads its analysis. The check says first which Docker and which Compose it ran with; it has passed with Compose 2.38.2 and with 5.6.0.
+`scripts/staging-check.sh`, a step of the gate, deploys the checkout as above with a directory, a project and ports of its own (4295 and 4296), behind a proxy that ends TLS with a certificate of its own making. It holds the deployment to what this page says: the directory's modes; the one loopback port and the closed network; the limits on memory and logs, and the users and capabilities of the containers; a database taken from empty, and from a revision behind, to the schema; the session cookie's flags; what the logs leave out; the password; the refusals; and, with GitHub itself as the provider and credentials made up for the purpose, which service holds which secret, where signing in starts and what a webhook is held to. In a browser, a person signs in, creates an organization, installs the App, connects a repository of the check's own making, waits for the worker to index it, reads its analysis and finds the private key the repository has committed on the Security page, at its commit and line. The key is made for the check and used for nothing; the check then holds that it is in no row of a dump of the database, no log and no container's settings, removes it in a second commit, has the repository read again, and sees the finding closed at that commit. The check says first which Docker and which Compose it ran with; it has passed with Compose 2.38.2 and with 5.6.0.
 
 The browser's part runs against any deployment that uses the simulated GitHub:
 
@@ -123,11 +124,12 @@ STAGING_URL=https://staging.example.com STAGING_REPOSITORY=owner/name \
   pnpm exec playwright test -c playwright.staging.config.ts
 ```
 
-`STAGING_VISITOR=name:password` gives the visitors' password, `STAGING_REPOSITORY_COMMIT` and `STAGING_REPOSITORY_SHOWS` say what the analysis must be of and must hold, and `STAGING_PERSON` chooses who signs in. It signs a person in and connects a repository for good; it is a check of a staging deployment and nothing to run against a deployment people use.
+`STAGING_VISITOR=name:password` gives the visitors' password, `STAGING_REPOSITORY_COMMIT` and `STAGING_REPOSITORY_SHOWS` say what the analysis must be of and must hold, `STAGING_FINDING=path:line` with `STAGING_FINDING_COMMIT` names a finding the Security page must show at that commit (and `STAGING_FINDING_FIXED` the commit that closed it, if it is closed), and `STAGING_PERSON` chooses who signs in. It signs a person in and connects a repository for good; it is a check of a staging deployment and nothing to run against a deployment people use.
 
 ## What it does not do
 
 - **GitHub itself has not been exercised.** The check proves the settings, the secrets and the addresses of a deployment that speaks to GitHub, and that a webhook is held to its signature. No request has been made to github.com with a registered App, so the table above is what the code asks GitHub for and not what GitHub has been seen to grant.
+- **No pushes with the simulated GitHub.** It sends no deliveries, so a repository whose default branch moved is read again only when it is disconnected and connected again.
 - **No TLS, no rate limit, no HSTS and no content security policy** at the edge. The first belongs to the machine's proxy; the others are not there.
 - **One machine, one of each service**, and a deploy that interrupts. Redis has no password and keeps nothing on disk: it is reachable only on the closed network, and a message it loses is queued again by the sweeper.
 - **No health check for the worker or the sweeper.** A deploy waits until both are running, which is all that is asked of them; whether the worker works is seen when it indexes a repository.
