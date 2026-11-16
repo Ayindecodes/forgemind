@@ -327,6 +327,8 @@ class Tree:
     # Each directory that holds a file, with the directories directly in it.
     children: dict[str, list[str]]
     truncated: bool
+    # How many files were left out for a name that cannot be shown.
+    unshown: int = 0
 
     def has(self, path: str) -> bool:
         return path in self.sizes
@@ -361,20 +363,26 @@ class Tree:
                 yield path
 
 
-def scan(root: Path, max_files: int = MAX_FILES) -> Tree:
-    """Lists the regular files under `root`. Links are not followed and not
-    listed, whatever they point at, so nothing outside the checkout is read."""
+def scan(
+    root: Path,
+    max_files: int = MAX_FILES,
+    ignored: frozenset[str] = IGNORED_DIRECTORIES,
+) -> Tree:
+    """Lists the regular files under `root`, outside directories named in
+    `ignored`. Links are not followed and not listed, whatever they point at,
+    so nothing outside the checkout is read. A file whose name could not be
+    shown or linked to is counted and not listed."""
     sizes: dict[str, int] = {}
     executable: set[str] = set()
     directories: set[str] = set()
     truncated = False
+    unshown = 0
     top = str(root)
     for current, names, files in os.walk(top, followlinks=False):
         names[:] = sorted(
             name
             for name in names
-            if name not in IGNORED_DIRECTORIES
-            and not os.path.islink(os.path.join(current, name))
+            if name not in ignored and not os.path.islink(os.path.join(current, name))
         )
         relative = os.path.relpath(current, top).replace(os.sep, "/")
         here = "" if relative == "." else relative
@@ -384,7 +392,10 @@ def scan(root: Path, max_files: int = MAX_FILES) -> Tree:
             except OSError:
                 continue
             path = join(here, name)
-            if not stat.S_ISREG(found.st_mode) or not printable(path):
+            if not stat.S_ISREG(found.st_mode):
+                continue
+            if not printable(path):
+                unshown += 1
                 continue
             if len(sizes) >= max_files:
                 truncated = True
@@ -398,7 +409,7 @@ def scan(root: Path, max_files: int = MAX_FILES) -> Tree:
     children: dict[str, list[str]] = {}
     for directory in sorted(directories):
         children.setdefault(parent(directory), []).append(directory)
-    return Tree(root, sizes, frozenset(executable), children, truncated)
+    return Tree(root, sizes, frozenset(executable), children, truncated, unshown)
 
 
 def inspect_tree(root: Path, max_files: int = MAX_FILES) -> Inspection:
