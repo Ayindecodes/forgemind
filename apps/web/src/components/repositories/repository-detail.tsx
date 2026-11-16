@@ -20,7 +20,9 @@ import { codeHref, shortCommit } from '@/lib/repositories';
  * One repository: what the analysis found about it, with every piece of
  * evidence linked to the code it came from at the analysed commit, and the
  * tasks and findings that touched it. When the analysis is not there yet
- * the page says why rather than filling the gap.
+ * the page says why rather than filling the gap. While a repository is
+ * indexed again, as it is after each push, the analysis it had stays, marked
+ * as the one before.
  */
 
 const taskStatus: Record<Task['status'], StatusValue> = {
@@ -50,11 +52,15 @@ export function RepositoryDetail({ id }: { id: string }) {
     queryKey: ['repository', id],
     queryFn: ({ signal }) => request('repository', { params: { id }, signal }),
   });
+  const analysed =
+    repository.data?.status === 'connected' ||
+    (repository.data?.status === 'analyzing' &&
+      repository.data.lastAnalyzedCommit !== null);
   const analysis = useQuery({
     queryKey: ['repository-analysis', id],
     queryFn: ({ signal }) =>
       request('repositoryAnalysis', { params: { id }, signal }),
-    enabled: repository.data?.status === 'connected',
+    enabled: analysed,
     retry: false,
   });
   const tasks = useQuery({
@@ -156,7 +162,7 @@ export function RepositoryDetail({ id }: { id: string }) {
         }
       />
 
-      {repo.status !== 'connected' ? (
+      {!analysed ? (
         <div className="material-solid" data-testid="analysis-missing">
           <EmptyState
             title={
@@ -186,7 +192,11 @@ export function RepositoryDetail({ id }: { id: string }) {
           />
         </div>
       ) : (
-        <AnalysisReport repository={repo} report={report} />
+        <AnalysisReport
+          repository={repo}
+          report={report}
+          reindexing={repo.status === 'analyzing'}
+        />
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -303,9 +313,11 @@ export function RepositoryDetail({ id }: { id: string }) {
 function AnalysisReport({
   repository,
   report,
+  reindexing,
 }: {
   repository: Repository;
   report: RepositoryAnalysis;
+  reindexing: boolean;
 }) {
   const link = (path: string, line: number | null = null) => (
     <a
@@ -338,6 +350,11 @@ function AnalysisReport({
             {shortCommit(report.commit)}
           </span>
           , {formatRelative(report.analyzedAt)}
+          {reindexing && (
+            <span data-testid="analysis-reindexing">
+              . Indexing again; this is the analysis from before
+            </span>
+          )}
         </span>
       </header>
       <dl className="grid gap-x-8 gap-y-4 px-4 py-4 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">

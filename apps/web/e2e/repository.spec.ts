@@ -125,6 +125,64 @@ test.describe('the repository detail', () => {
     await expect(page.getByTestId('analysis')).toHaveCount(0);
   });
 
+  test('keeps the analysis it had while the repository is indexed again', async ({
+    page,
+  }) => {
+    await page.route(
+      new RegExp(`^${api}/repositories/repo-1$`),
+      async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({
+          response,
+          json: {
+            ...(await response.json()),
+            status: 'analyzing',
+            statusMessage: 'Indexing the repository',
+          },
+        });
+      },
+    );
+    const served = await fetchJson<{ commit: string }>(
+      page,
+      '/repositories/repo-1/analysis',
+    );
+    await open(page, '/repositories/repo-1');
+    await expect(page.getByTestId('analysis')).toHaveAttribute(
+      'data-commit',
+      served.commit,
+    );
+    await expect(page.getByTestId('analysis-reindexing')).toContainText(
+      'Indexing again; this is the analysis from before',
+    );
+    await expect(page.getByTestId('analysis-missing')).toHaveCount(0);
+  });
+
+  test('says the analysis comes once a first indexing finishes', async ({
+    page,
+  }) => {
+    await page.route(
+      new RegExp(`^${api}/repositories/repo-1$`),
+      async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({
+          response,
+          json: {
+            ...(await response.json()),
+            status: 'analyzing',
+            statusMessage: 'Indexing the repository',
+            lastAnalyzedAt: null,
+            lastAnalyzedCommit: null,
+          },
+        });
+      },
+    );
+    await open(page, '/repositories/repo-1');
+    await expect(page.getByTestId('analysis-missing')).toContainText(
+      'Indexing in progress',
+    );
+    await expect(page.getByTestId('analysis')).toHaveCount(0);
+  });
+
   test('has no axe violations', async ({ page }) => {
     await open(page, '/repositories/repo-1');
     await expect(page.getByTestId('analysis')).toBeVisible();
