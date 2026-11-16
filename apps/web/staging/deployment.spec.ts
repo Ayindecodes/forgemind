@@ -10,6 +10,11 @@ import { expect, test, type Page } from '@playwright/test';
  *   STAGING_REPOSITORY_COMMIT  the commit its analysis must be of (optional)
  *   STAGING_REPOSITORY_SHOWS   texts the analysis must hold, comma-separated
  *                              (optional)
+ *   STAGING_FINDING            a finding the Security page must show, as
+ *                              path:line (optional)
+ *   STAGING_FINDING_COMMIT     the commit that line is a line of
+ *   STAGING_FINDING_FIXED      the commit that no longer has it, if it is
+ *                              closed (optional)
  *   STAGING_PERSON             who signs in; Sam Rivera unless given
  */
 const person = process.env.STAGING_PERSON ?? 'Sam Rivera';
@@ -18,6 +23,9 @@ const commit = process.env.STAGING_REPOSITORY_COMMIT;
 const shows = (process.env.STAGING_REPOSITORY_SHOWS ?? '')
   .split(',')
   .filter(Boolean);
+const finding = process.env.STAGING_FINDING;
+const findingCommit = process.env.STAGING_FINDING_COMMIT ?? '';
+const fixedAt = process.env.STAGING_FINDING_FIXED;
 
 async function onSimulatedGitHub(page: Page) {
   await expect(page.getByRole('note')).toContainText('Simulated GitHub');
@@ -109,6 +117,35 @@ test('a person signs in with GitHub, connects a repository and inspects it', asy
   // The session is kept by the browser: it is still there after a reload.
   await page.reload();
   await expect(page.getByTestId('analysis')).toBeVisible();
+
+  // What a scan raised: at the commit and the line it was found at, and,
+  // once a later commit no longer has it, closed at that commit.
+  if (finding) {
+    expect(findingCommit, 'STAGING_FINDING_COMMIT names a commit').toMatch(
+      /^[0-9a-f]{40}$/,
+    );
+    const [path, line] = finding.split(':');
+    await page.goto('/security');
+    if (fixedAt) await page.getByTestId('show-fixed').click();
+    const card = page
+      .getByTestId(/^finding-[0-9a-f-]{36}$/)
+      .filter({ hasText: finding });
+    await expect(card).toHaveCount(1);
+    await expect(card.getByTestId('finding-commit')).toHaveText(
+      findingCommit.slice(0, 7),
+    );
+    await expect(card.getByTestId('finding-code')).toHaveAttribute(
+      'href',
+      new RegExp(`/blob/${findingCommit}/${path}#L${line}$`),
+    );
+    if (fixedAt) {
+      await expect(card.getByTestId('fixed-commit')).toHaveText(
+        `no longer found at ${fixedAt.slice(0, 7)}`,
+      );
+    } else {
+      await expect(card.getByTestId('fixed-commit')).toHaveCount(0);
+    }
+  }
 
   const origin = new URL(baseURL!).origin;
   const elsewhere = asked.filter(
