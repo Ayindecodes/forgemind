@@ -68,7 +68,7 @@ def repository_out(db: DbSession, repo: Repository) -> RepositoryOut:
         ],
         last_analyzed_commit=repo.last_analyzed_commit,
         last_analyzed_at=repo.last_analyzed_at,
-        open_findings=service.open_findings(db, repo.id),
+        open_findings=service.open_findings(db, repo),
         latest_task_id=str(latest) if latest else None,
         pushed_at=repo.pushed_at or repo.connected_at,
         connected_at=repo.connected_at,

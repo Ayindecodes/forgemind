@@ -196,13 +196,18 @@ def repository_of(
     return repo
 
 
-def open_findings(db: DbSession, repo_id: uuid.UUID) -> int:
+def open_findings(db: DbSession, repo: Repository) -> int:
+    """How many of the findings listed for the repository are open. None are
+    listed for one that was disconnected: it is no longer read, so what was
+    found in it cannot be kept up to date."""
+    if repo.status == "revoked":
+        return 0
     return (
         db.scalar(
             select(func.count())
             .select_from(SecurityFinding)
             .where(
-                SecurityFinding.repository_id == repo_id,
+                SecurityFinding.repository_id == repo.id,
                 SecurityFinding.status == "open",
             )
         )

@@ -452,3 +452,23 @@ def test_one_organization_never_sees_anothers_findings(
     assert client.get("/findings").status_code == 401
     nobody = newcomer(engine, "No Organization")
     assert client.get("/findings", headers=nobody).status_code == 403
+
+
+def test_a_disconnected_repositorys_findings_are_neither_listed_nor_counted(
+    client: TestClient,
+    engine: Engine,
+    chen: tuple[dict[str, str], dict[str, str]],
+) -> None:
+    riley, ids = chen
+    two = uuid.UUID(ids["chen/two"])
+    with Session(engine) as db, db.begin():
+        db.get_one(Repository, two).status = "revoked"
+    try:
+        assert titles(findings(client, riley)) == ["critical", "newer high", "low"]
+        assert findings(client, riley, repositoryId=str(two)) == []
+        revoked = client.get(f"/repositories/{two}", headers=riley).json()
+        assert (revoked["status"], revoked["openFindings"]) == ("revoked", 0)
+    finally:
+        with Session(engine) as db, db.begin():
+            db.get_one(Repository, two).status = "connected"
+    assert client.get(f"/repositories/{two}", headers=riley).json()["openFindings"] == 1
