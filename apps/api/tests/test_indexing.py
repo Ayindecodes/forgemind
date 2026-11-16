@@ -815,6 +815,173 @@ def test_a_restored_installation_the_queue_refuses_is_swept(
     assert queue.indexing == [never]
 
 
+# --- the default branch moving
+
+
+def pushed(
+    sessions: Sessions,
+    queue: Dispatcher,
+    repository_id: uuid.UUID,
+    **payload: object,
+) -> str:
+    """GitHub saying the repository's default branch was pushed to, unless
+    `payload` says otherwise, committed."""
+    with sessions() as db:
+        with db.begin():
+            repo = db.get_one(Repository, repository_id)
+            done = handle_webhook(
+                db,
+                queue,
+                "push",
+                {
+                    "ref": f"refs/heads/{repo.default_branch}",
+                    "after": "d" * 40,
+                    "deleted": False,
+                    "repository": {"id": repo.github_id},
+                    "installation": {"id": INSTALLATION},
+                    **payload,
+                },
+            )
+        run_after_commit(db)
+    return done
+
+
+def test_a_push_to_the_default_branch_has_the_repository_indexed_again(
+    sessions: Sessions, settings: Settings, github: Scripted
+) -> None:
+    repository_id = connect(sessions, github)
+    assert index_repository(sessions, repository_id, settings, github) == "indexed"
+    before = repository_of(sessions, repository_id).pushed_at
+    queue = Recorder()
+    assert pushed(sessions, queue, repository_id) == "indexing requested"
+    assert queue.indexing == [repository_id]
+    again = repository_of(sessions, repository_id)
+    assert waiting(again) == ("analyzing", INDEXING, None, False)
+    assert again.pushed_at is not None and again.pushed_at != before
+    # Until it is read again, what was found is what is known.
+    assert again.last_analyzed_commit == DOCS_COMMIT
+    assert index_repository(sessions, repository_id, settings, github) == "indexed"
+    assert waiting(repository_of(sessions, repository_id)) == (
+        "connected",
+        None,
+        None,
+        True,
+    )
+
+
+def test_a_push_that_does_not_move_the_default_branch_is_ignored(
+    sessions: Sessions, settings: Settings, github: Scripted
+) -> None:
+    repository_id = connect(sessions, github)
+    assert index_repository(sessions, repository_id, settings, github) == "indexed"
+    queue = Recorder()
+    elsewhere = "ignored: push to something other than the default branch"
+    assert pushed(sessions, queue, repository_id, ref="refs/heads/feature") == (
+        elsewhere
+    )
+    assert pushed(sessions, queue, repository_id, ref="refs/tags/main") == elsewhere
+    assert pushed(sessions, queue, repository_id, ref=None) == elsewhere
+    assert pushed(sessions, queue, repository_id, deleted=True) == (
+        "ignored: the default branch was deleted"
+    )
+    assert pushed(sessions, queue, repository_id, after=DOCS_COMMIT) == (
+        "ignored: already indexed at that commit"
+    )
+    unconnected = "ignored: push to a repository that is not connected"
+    assert pushed(sessions, queue, repository_id, repository={"id": INFRA}) == (
+        unconnected
+    )
+    assert pushed(sessions, queue, repository_id, repository=None) == unconnected
+    assert queue.indexing == []
+    assert waiting(repository_of(sessions, repository_id)) == (
+        "connected",
+        None,
+        None,
+        True,
+    )
+    disconnect(sessions, repository_id)
+    assert pushed(sessions, queue, repository_id) == unconnected
+    assert repository_of(sessions, repository_id).status == "revoked"
+    assert queue.indexing == []
+
+
+def test_a_push_through_a_suspended_installation_is_ignored(
+    sessions: Sessions, settings: Settings, github: Scripted
+) -> None:
+    repository_id = connect(sessions, github)
+    assert index_repository(sessions, repository_id, settings, github) == "indexed"
+    told(sessions, Recorder(), "suspend")
+    queue = Recorder()
+    assert pushed(sessions, queue, repository_id) == (
+        "ignored: the installation is suspended"
+    )
+    assert queue.indexing == []
+    stored = repository_of(sessions, repository_id)
+    assert (stored.status, stored.status_message) == ("error", SUSPENDED)
+
+
+def test_a_repository_that_could_not_be_indexed_is_tried_again_after_a_push(
+    sessions: Sessions, settings: Settings, github: Scripted
+) -> None:
+    repository_id = connect(sessions, github)
+
+    def refused() -> None:
+        raise RepositoryUnavailable(GONE, permanent=True)
+
+    github.before = refused
+    assert index_repository(sessions, repository_id, settings, github) == "failed"
+    github.before = lambda: None
+    queue = Recorder()
+    assert pushed(sessions, queue, repository_id) == "indexing requested"
+    assert queue.indexing == [repository_id]
+    assert index_repository(sessions, repository_id, settings, github) == "indexed"
+    assert repository_of(sessions, repository_id).status == "connected"
+
+
+def test_a_push_while_a_worker_reads_the_repository_has_it_read_once_more(
+    sessions: Sessions, settings: Settings, github: Scripted, tmp_path: Path
+) -> None:
+    repository_id = connect(sessions, github)
+    with sessions() as db, db.begin():
+        assert isinstance(claim(db, repository_id, "at-work", settings), Claimed)
+    queue = Recorder()
+    # The worker reading it is left to finish, and nothing is queued yet.
+    assert pushed(sessions, queue, repository_id) == "indexing requested"
+    assert queue.indexing == []
+    assert repository_of(sessions, repository_id).index_worker_id == "at-work"
+    assert conclude(sessions, repository_id, "at-work", settings, found(tmp_path)) == (
+        "again"
+    )
+    # What it read is kept, and the repository waits to be read where the
+    # branch is now, with every attempt still before it.
+    stored = repository_of(sessions, repository_id)
+    assert waiting(stored) == ("analyzing", INDEXING, None, True)
+    assert stored.last_analyzed_commit == "c" * 40
+    assert stored.index_attempts == 0
+    assert sweep_indexing(sessions, settings, queue) == {**QUIET, "queued": 1}
+    assert queue.indexing == [repository_id]
+    assert index_repository(sessions, repository_id, settings, github) == "indexed"
+    stored = repository_of(sessions, repository_id)
+    assert stored.last_analyzed_commit == DOCS_COMMIT
+    assert waiting(stored) == ("connected", None, None, True)
+
+
+def test_a_push_before_a_worker_reads_the_repository_is_covered_by_that_reading(
+    sessions: Sessions, settings: Settings, github: Scripted
+) -> None:
+    repository_id = connect(sessions, github)
+    queue = Recorder()
+    assert pushed(sessions, queue, repository_id) == "indexing requested"
+    assert queue.indexing == []
+    assert index_repository(sessions, repository_id, settings, github) == "indexed"
+    assert waiting(repository_of(sessions, repository_id)) == (
+        "connected",
+        None,
+        None,
+        True,
+    )
+
+
 # --- the sweeper
 
 

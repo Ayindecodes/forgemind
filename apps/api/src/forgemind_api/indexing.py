@@ -5,6 +5,10 @@ the commit its default branch is at, into a workspace nothing can write to,
 inspects and scans the files without running any of them, and stores what it
 found against that commit.
 
+A repository is indexed when it is connected and again each time its default
+branch moves. If the branch moves while a worker is reading it, the worker
+finishes with the commit it has and the repository is then indexed once more.
+
 As with runs, the queue only delivers the request and the database decides
 who works on it. A request may be lost, repeated or late without a repository
 being left waiting for ever, indexed by two workers at once, or written to by
@@ -53,11 +57,14 @@ INTERNAL = "Indexing stopped on an internal error."
 # what they read and how long they read keys for, to well within it.
 READING_SECONDS = 120
 
-# What a delivery came to: the repository was indexed; it cannot be, and says
-# why; this attempt failed and another is due; another worker holds it; it is
-# not waiting to be indexed; it stopped being this worker's part-way; or there
-# is no such repository.
-Verdict = Literal["indexed", "failed", "retry", "held", "skipped", "lost", "missing"]
+# What a delivery came to: the repository was indexed; its branch moved
+# meanwhile, so it is to be indexed again; it cannot be indexed, and says why;
+# this attempt failed and another is due; another worker holds it; it is not
+# waiting to be indexed; it stopped being this worker's part-way; or there is
+# no such repository.
+Verdict = Literal[
+    "indexed", "again", "failed", "retry", "held", "skipped", "lost", "missing"
+]
 
 
 @dataclass(frozen=True)
@@ -124,6 +131,7 @@ def request_indexing(db: DbSession, repo: Repository, dispatcher: Dispatcher) ->
     repo.index_worker_id = None
     repo.index_heartbeat_at = None
     repo.index_dispatched_at = now()
+    repo.index_again = False
     db.flush()
     repository_id = repo.id
     bind = db.get_bind()
@@ -145,6 +153,16 @@ def locked_repository(db: DbSession, repository_id: uuid.UUID) -> Repository | N
         .with_for_update()
         .execution_options(populate_existing=True)
     ).one_or_none()
+
+
+def branch_moved(db: DbSession, repo: Repository, dispatcher: Dispatcher) -> None:
+    """Has the repository indexed at where its default branch is now. If a
+    worker is reading it, that worker finishes first: starting over each time
+    the branch moves would index a busy repository never."""
+    if repo.status == "analyzing":
+        repo.index_again = True
+        return
+    request_indexing(db, repo, dispatcher)
 
 
 def claim_is_live(repo: Repository, at: datetime, settings: Settings) -> bool:
@@ -203,6 +221,8 @@ def claim(
     repo.index_attempts += 1
     repo.index_worker_id = holder
     repo.index_heartbeat_at = stamp
+    # Whatever moved the branch before now, this attempt reads where it is.
+    repo.index_again = False
     return Claimed(repo.full_name, repo.default_branch, installation_id)
 
 
@@ -310,6 +330,15 @@ def conclude(
         if isinstance(outcome, Found):
             record_analysis(db, repo, outcome.commit, outcome.inspection, stamp)
             record_findings(db, repo, outcome.commit, outcome.scans, stamp)
+        if repo.index_again:
+            # The branch moved while this attempt was under way, so whatever
+            # it came to is of a commit the branch may have left. It waits
+            # again, for the sweeper to queue, as a repository never indexed
+            # does.
+            repo.index_attempts = 0
+            release(repo)
+            return "again"
+        if isinstance(outcome, Found):
             repo.status = "connected"
             repo.status_message = None
             release(repo)

@@ -536,6 +536,23 @@ def test_suspension_and_removal_from_github_reach_the_repositories(
         return result
 
     iid = int(installation["id"])
+    # A push to the default branch has a repository read again; one to
+    # another branch does not.
+    indexed = client.get(f"/repositories/{pipeline['id']}", headers=riley).json()
+    push = {
+        "ref": "refs/heads/main",
+        "after": "e" * 40,
+        "repository": {"id": 920003},
+        "installation": {"id": iid},
+    }
+    assert post("push", {**push, "ref": "refs/heads/feature"})["result"] == (
+        "ignored: push to something other than the default branch"
+    )
+    assert post("push", push)["result"] == "indexing requested"
+    moved = client.get(f"/repositories/{pipeline['id']}", headers=riley).json()
+    assert (moved["status"], moved["statusMessage"]) == ("analyzing", INDEXING)
+    assert moved["lastAnalyzedCommit"] == indexed["lastAnalyzedCommit"]
+    index(app, pipeline)
     post(
         "installation_repositories",
         {

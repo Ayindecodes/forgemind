@@ -8,6 +8,7 @@ revoked one revives the same record. Every change writes an audit entry.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import timedelta
 from typing import cast
 
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session as DbSession
 from forgemind_api.auth import Principal, now
 from forgemind_api.errors import ApiFailure
 from forgemind_api.github import APP_PERMISSIONS, GitHubProvider, GitHubRepo, as_object
-from forgemind_api.indexing import request_indexing
+from forgemind_api.indexing import branch_moved, request_indexing
 from forgemind_api.models import (
     GitHubInstallation,
     InstallState,
@@ -340,10 +341,38 @@ def disconnect_repository(
     return repo
 
 
+def pushed(
+    db: DbSession,
+    dispatcher: Dispatcher,
+    installation: GitHubInstallation,
+    repos: Sequence[Repository],
+    payload: dict[str, object],
+) -> str:
+    """A push. If it moved the default branch of a repository that is
+    connected, the repository is indexed again, at where the branch is when a
+    worker reads it."""
+    github_id = as_object(payload.get("repository")).get("id")
+    repo = next((repo for repo in repos if repo.github_id == github_id), None)
+    if repo is None:
+        return "ignored: push to a repository that is not connected"
+    if payload.get("ref") != f"refs/heads/{repo.default_branch}":
+        return "ignored: push to something other than the default branch"
+    if payload.get("deleted") is True:
+        return "ignored: the default branch was deleted"
+    if installation.suspended_at is not None:
+        return "ignored: the installation is suspended"
+    if repo.status == "connected" and payload.get("after") == repo.last_analyzed_commit:
+        return "ignored: already indexed at that commit"
+    repo.pushed_at = now()
+    branch_moved(db, repo, dispatcher)
+    return "indexing requested"
+
+
 def handle_webhook(
     db: DbSession, dispatcher: Dispatcher, event: str, payload: dict[str, object]
 ) -> str:
-    """Applies what GitHub says about an installation. Returns what was done."""
+    """Applies what GitHub says about an installation and the repositories it
+    covers. Returns what was done."""
     installation_id = as_object(payload.get("installation")).get("id")
     if not isinstance(installation_id, int):
         return "ignored: no installation"
@@ -397,4 +426,6 @@ def handle_webhook(
                 repo.status = "error"
                 repo.status_message = INACCESSIBLE
         return f"{len(removed)} repositories marked inaccessible"
+    if event == "push":
+        return pushed(db, dispatcher, installation, repos, payload)
     return f"ignored: {event} {action}"

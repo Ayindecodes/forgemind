@@ -186,6 +186,7 @@ def seed(engine: Engine, settings: Settings) -> None:
             repo.index_dispatched_at = None
             repo.index_worker_id = None
             repo.index_heartbeat_at = None
+            repo.index_again = False
             if was_indexed:
                 commit, found = indexed(full_name, settings.workspace_root)
                 record_analysis(db, repo, commit, found.inspection, base)
