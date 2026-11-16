@@ -161,15 +161,15 @@ def test_a_task_waits_for_the_commit_it_is_to_start_from(
         headers=OWNER,
     ).json()
 
-    def left(**values: Any) -> str:
-        """What asking for a task says with the repository left like that."""
+    def asked(**values: Any) -> Any:
+        """What asking for a task comes to with the repository left like that."""
         with DbSession(engine) as db, db.begin():
             db.execute(
                 update(Repository)
                 .where(Repository.id == uuid.UUID(connected["id"]))
                 .values(**values)
             )
-        refused = client.post(
+        return client.post(
             "/tasks",
             json={
                 "repositoryId": connected["id"],
@@ -179,18 +179,27 @@ def test_a_task_waits_for_the_commit_it_is_to_start_from(
             },
             headers=OWNER,
         )
-        assert refused.status_code == 409, refused.text
-        message: str = refused.json()["error"]["message"]
+
+    def refused(**values: Any) -> str:
+        response = asked(**values)
+        assert response.status_code == 409, response.text
+        message: str = response.json()["error"]["message"]
         return message
 
-    # Indexed before and being indexed again: the commit may be about to change.
-    assert left(last_analyzed_commit="c" * 40) == (
+    # Being indexed for the first time: there is no commit yet.
+    assert connected["status"] == "analyzing"
+    assert refused() == (
         "forgemind/infra is still being indexed; try again once it is connected"
     )
     # Indexing ended without reading it.
-    assert left(status="error", last_analyzed_commit=None) == (
+    assert refused(status="error", last_analyzed_commit=None) == (
         "forgemind/infra has not been indexed, so there is no commit to start from"
     )
+    # Indexed before and being indexed again, as it is after every push: the
+    # task starts from the commit last indexed, which the analysis is of.
+    started = asked(status="analyzing", last_analyzed_commit="c" * 40)
+    assert started.status_code == 201, started.text
+    assert started.json()["baseCommit"] == "c" * 40
     client.delete(f"/repositories/{connected['id']}", headers=OWNER)
 
 
