@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     Text,
     UniqueConstraint,
+    false,
     func,
     text,
 )
@@ -81,6 +82,12 @@ class Repository(IdMixin, TimestampsMixin, Base):
     )
     index_worker_id: Mapped[str | None] = mapped_column(Text)
     index_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Its default branch moved after a worker picked it up, so what that
+    # worker finds may be of a commit the branch has left: it is indexed once
+    # more when the worker is done.
+    index_again: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
     __table_args__ = (
         UniqueConstraint("organization_id", "github_id"),
