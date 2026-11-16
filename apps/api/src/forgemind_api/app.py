@@ -26,6 +26,7 @@ from forgemind_api.models import InstallState, Organization, User
 from forgemind_api.queue import make_dispatcher, queue_reachable
 from forgemind_api.repositories import account_login_of
 from forgemind_api.routes import auth as auth_routes
+from forgemind_api.routes import findings as finding_routes
 from forgemind_api.routes import notifications as notification_routes
 from forgemind_api.routes import organizations as organization_routes
 from forgemind_api.routes import repositories as repository_routes
@@ -149,6 +150,7 @@ def create_app(
     app.include_router(organization_routes.router)
     app.include_router(repository_routes.router)
     app.include_router(task_routes.router)
+    app.include_router(finding_routes.router)
     app.include_router(notification_routes.router)
     app.include_router(usage_routes.router)
 

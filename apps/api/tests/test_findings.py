@@ -4,17 +4,27 @@ organization's list of them."""
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
-from sqlalchemy import select
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
+from forgemind_api.app import create_app
 from forgemind_api.credentials import TOOL
 from forgemind_api.findings import record_findings
 from forgemind_api.models import Organization, Repository, SecurityFinding
 from forgemind_api.scanning import Raised, Scanned, Severity
+from forgemind_api.seed import seed
+from forgemind_api.settings import Settings
+from tests.helpers import newcomer
 
+OWNER = {"cookie": "fm_session=dev-owner"}
+WEB = "http://localhost:3200"
 FIRST, SECOND, THIRD = "a" * 40, "b" * 40, "c" * 40
 AT = datetime(2026, 11, 1, 9, tzinfo=UTC)
 
@@ -256,3 +266,189 @@ def test_the_same_key_in_two_repositories_is_two_findings(
     [theirs] = findings_of(session, other).values()
     assert ours.id != theirs.id
     assert (ours.status, theirs.status) == ("open", "fixed")
+
+
+# --- the organization's list
+
+
+@pytest.fixture(scope="module")
+def app(database_url: str, engine: Engine) -> Iterator[FastAPI]:
+    settings = Settings(environment="test", database_url=database_url, web_origin=WEB)
+    seed(engine, settings)
+    app = create_app(settings)
+    yield app
+    app.state.engine.dispose()
+
+
+@pytest.fixture(scope="module")
+def client(app: FastAPI) -> TestClient:
+    return TestClient(app)
+
+
+def repositories(client: TestClient, headers: dict[str, str]) -> dict[str, Any]:
+    items: list[dict[str, Any]] = client.get(
+        "/repositories", params={"limit": 200}, headers=headers
+    ).json()["items"]
+    return {repo["fullName"]: repo for repo in items}
+
+
+def findings(
+    client: TestClient, headers: dict[str, str], **query: Any
+) -> list[dict[str, Any]]:
+    response = client.get("/findings", params={"limit": 200, **query}, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["nextCursor"] is None
+    items: list[dict[str, Any]] = response.json()["items"]
+    return items
+
+
+def organization_of(client: TestClient, headers: dict[str, str]) -> uuid.UUID:
+    return uuid.UUID(client.get("/organization", headers=headers).json()["id"])
+
+
+def stored_finding(
+    db: Session,
+    repo: Repository,
+    title: str,
+    severity: str,
+    detected_at: datetime,
+    status: str = "open",
+) -> None:
+    db.add(
+        SecurityFinding(
+            organization_id=repo.organization_id,
+            repository_id=repo.id,
+            title=title,
+            severity=severity,
+            confidence="confirmed",
+            category="exposed_credential",
+            commit=FIRST,
+            path="key.pem",
+            line=1,
+            tool=TOOL,
+            status=status,
+            detected_at=detected_at,
+            fixed_commit=SECOND if status == "fixed" else None,
+        )
+    )
+
+
+@pytest.fixture(scope="module")
+def chen(client: TestClient, engine: Engine) -> tuple[dict[str, str], dict[str, str]]:
+    """Another organization, with two repositories and five findings on them.
+    Returns its member's cookie and its repositories' ids by name."""
+    riley = newcomer(engine, "Riley Chen")
+    assert (
+        client.post(
+            "/organization", json={"name": "Chen Works"}, headers=riley
+        ).status_code
+        == 201
+    )
+    organization_id = organization_of(client, riley)
+    with Session(engine) as db, db.begin():
+        one = add_repository(db, organization_id, "chen/one")
+        two = add_repository(db, organization_id, "chen/two")
+        stored_finding(db, one, "low", "low", AT + timedelta(hours=3))
+        stored_finding(db, one, "critical", "critical", AT)
+        stored_finding(db, two, "older high", "high", AT + timedelta(hours=1))
+        stored_finding(db, one, "newer high", "high", AT + timedelta(hours=2))
+        stored_finding(db, two, "medium", "medium", AT, status="fixed")
+        ids = {"chen/one": str(one.id), "chen/two": str(two.id)}
+    return riley, ids
+
+
+def titles(items: list[dict[str, Any]]) -> list[str]:
+    return [item["title"] for item in items]
+
+
+def test_findings_come_most_severe_first_then_most_recent(
+    client: TestClient, chen: tuple[dict[str, str], dict[str, str]]
+) -> None:
+    riley, _ = chen
+    assert titles(findings(client, riley)) == [
+        "critical",
+        "newer high",
+        "older high",
+        "medium",
+        "low",
+    ]
+
+
+def test_findings_are_paged(
+    client: TestClient, chen: tuple[dict[str, str], dict[str, str]]
+) -> None:
+    riley, _ = chen
+    pages: list[list[str]] = []
+    cursor: str | None = None
+    while True:
+        params: dict[str, Any] = {"limit": 2}
+        if cursor is not None:
+            params["cursor"] = cursor
+        page = client.get("/findings", params=params, headers=riley).json()
+        pages.append(titles(page["items"]))
+        cursor = page["nextCursor"]
+        if cursor is None:
+            break
+        assert len(pages) < 5
+    assert pages == [["critical", "newer high"], ["older high", "medium"], ["low"]]
+
+
+def test_findings_are_filtered_by_repository_severity_and_status(
+    client: TestClient, chen: tuple[dict[str, str], dict[str, str]]
+) -> None:
+    riley, ids = chen
+    assert titles(findings(client, riley, repositoryId=ids["chen/one"])) == [
+        "critical",
+        "newer high",
+        "low",
+    ]
+    assert titles(findings(client, riley, severity="high")) == [
+        "newer high",
+        "older high",
+    ]
+    fixed = findings(client, riley, status="fixed")
+    assert titles(fixed) == ["medium"]
+    assert (fixed[0]["commit"], fixed[0]["fixedCommit"]) == (FIRST, SECOND)
+    assert titles(
+        findings(client, riley, repositoryId=ids["chen/two"], status="open")
+    ) == ["older high"]
+    # No repository of that name is no repository of theirs.
+    assert findings(client, riley, repositoryId="nope") == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        {"cursor": "next"},
+        {"cursor": "-1"},
+        {"limit": 0},
+        {"limit": 201},
+        {"severity": "dire"},
+        {"status": "closed"},
+    ],
+)
+def test_a_query_the_list_cannot_answer_is_refused(
+    client: TestClient, query: dict[str, Any]
+) -> None:
+    refused = client.get("/findings", params=query, headers=OWNER)
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["error"]["code"] == "invalid"
+
+
+def test_one_organization_never_sees_anothers_findings(
+    client: TestClient,
+    engine: Engine,
+    chen: tuple[dict[str, str], dict[str, str]],
+) -> None:
+    riley, ids = chen
+    workers = repositories(client, OWNER)["forgemind/workers"]
+    theirs = findings(client, riley)
+    ours = findings(client, OWNER)
+    assert len(theirs) == 5
+    assert {item["repositoryId"] for item in theirs} == set(ids.values())
+    assert not {item["id"] for item in theirs} & {item["id"] for item in ours}
+    assert findings(client, riley, repositoryId=workers["id"]) == []
+    assert findings(client, OWNER, repositoryId=ids["chen/one"]) == []
+    assert client.get("/findings").status_code == 401
+    nobody = newcomer(engine, "No Organization")
+    assert client.get("/findings", headers=nobody).status_code == 403

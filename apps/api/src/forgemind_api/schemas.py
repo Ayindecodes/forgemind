@@ -233,6 +233,45 @@ class RepositoryAnalysisOut(Wire):
     concerns: list[ConcernOut]
 
 
+Severity = Literal["critical", "high", "medium", "low", "info"]
+FindingStatus = Literal["open", "fixed", "dismissed"]
+
+
+class FindingOut(Wire):
+    id: str
+    repository_id: str
+    run_id: str | None
+    title: str = Field(min_length=1)
+    severity: Severity
+    confidence: Literal["confirmed", "likely", "suspected"]
+    category: Literal[
+        "vulnerable_dependency",
+        "exposed_credential",
+        "injection",
+        "deserialization",
+        "xss",
+        "access_control",
+        "subprocess",
+        "configuration",
+        "missing_tests",
+        "other",
+    ]
+    commit: str = Field(min_length=1)
+    location: CodeReferenceOut
+    evidence: str
+    remediation: str
+    advisory_url: str | None
+    tool: str = Field(min_length=1)
+    status: FindingStatus
+    fixed_commit: str | None
+    detected_at: datetime
+
+
+class FindingPageOut(Wire):
+    items: list[FindingOut]
+    next_cursor: str | None
+
+
 class ConnectRepositoryIn(Wire):
     github_id: int
     full_name: str = Field(pattern=r"^[^/\s]+/[^/\s]+$")

@@ -9,12 +9,15 @@ the scan could not speak for where it was. Dismissed, it stays dismissed.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session as DbSession
 
+from forgemind_api.errors import ApiFailure
 from forgemind_api.models import Repository, SecurityFinding
+from forgemind_api.models.repositories import SEVERITIES
 from forgemind_api.scanning import Scanned, fingerprint
 
 
@@ -93,3 +96,52 @@ def record_findings(
                 counts["closed"] += 1
     db.flush()
     return counts
+
+
+def findings_page(
+    db: DbSession,
+    organization_id: uuid.UUID,
+    cursor: str | None,
+    limit: int,
+    repository_id: str | None = None,
+    severity: str | None = None,
+    status: str | None = None,
+) -> tuple[list[SecurityFinding], str | None]:
+    """The organization's findings on the repositories it has connected, the
+    most severe first and then the most recently raised."""
+    try:
+        offset = int(cursor) if cursor else 0
+    except ValueError:
+        raise ApiFailure("invalid", "Invalid cursor") from None
+    if offset < 0:
+        raise ApiFailure("invalid", "Invalid cursor")
+    query = (
+        select(SecurityFinding)
+        .join(Repository, Repository.id == SecurityFinding.repository_id)
+        .where(
+            SecurityFinding.organization_id == organization_id,
+            # A repository that was disconnected is no longer read, so what
+            # was found in it cannot be kept up to date.
+            Repository.status != "revoked",
+        )
+    )
+    if repository_id is not None:
+        try:
+            wanted = uuid.UUID(repository_id)
+        except ValueError:
+            return [], None
+        query = query.where(SecurityFinding.repository_id == wanted)
+    if severity is not None:
+        query = query.where(SecurityFinding.severity == severity)
+    if status is not None:
+        query = query.where(SecurityFinding.status == status)
+    rank = case(
+        {level: place for place, level in enumerate(SEVERITIES)},
+        value=SecurityFinding.severity,
+    )
+    rows = db.scalars(
+        query.order_by(rank, SecurityFinding.detected_at.desc(), SecurityFinding.id)
+        .offset(offset)
+        .limit(limit + 1)
+    ).all()
+    return list(rows[:limit]), (str(offset + limit) if len(rows) > limit else None)
