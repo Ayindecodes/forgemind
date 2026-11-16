@@ -3,7 +3,8 @@ for development and tests. Refuses to run anywhere else. Safe to run again:
 it updates.
 
 The repositories are the simulated GitHub's, and what is recorded about them
-is found the way a worker finds it: each is cloned and inspected here."""
+is found the way a worker finds it: each is cloned, inspected and scanned
+here."""
 
 from __future__ import annotations
 
@@ -15,9 +16,9 @@ from sqlalchemy.orm import Session as DbSession
 
 from forgemind_api import workspace
 from forgemind_api.auth import token_hash
+from forgemind_api.findings import record_findings
 from forgemind_api.github import APP_PERMISSIONS, PERSONAS, SimulatedGitHub
 from forgemind_api.indexing import record_analysis
-from forgemind_api.inspection import Inspection, inspect_tree
 from forgemind_api.models import (
     GitHubInstallation,
     Organization,
@@ -27,6 +28,7 @@ from forgemind_api.models import (
     User,
 )
 from forgemind_api.settings import Settings, SettingsError
+from forgemind_api.survey import Survey, survey
 from forgemind_api.workspace import RepositoryUnavailable
 
 # The installation the organization is seeded with, and the simulated GitHub
@@ -73,9 +75,9 @@ DEV_TOKENS: tuple[tuple[str, str, int], ...] = (
 
 
 @functools.cache
-def indexed(full_name: str, workspace_root: str | None) -> tuple[str, Inspection]:
-    """The commit the simulated repository is at and what inspecting it
-    finds. Cloned and inspected once per process: neither changes."""
+def indexed(full_name: str, workspace_root: str | None) -> tuple[str, Survey]:
+    """The commit the simulated repository is at and what reading it finds.
+    Cloned and read once per process: neither changes."""
     github = SimulatedGitHub(
         "", "", lambda installation_id: ACCOUNT, workspace_root=workspace_root
     )
@@ -86,7 +88,7 @@ def indexed(full_name: str, workspace_root: str | None) -> tuple[str, Inspection
                 source, branch="main", root=workspace_root
             ) as checked_out,
         ):
-            return checked_out.commit, inspect_tree(checked_out.path)
+            return checked_out.commit, survey(checked_out.path)
     except RepositoryUnavailable as unavailable:
         raise SettingsError(
             f"the seed could not index {full_name}: {unavailable.reason}"
@@ -185,8 +187,9 @@ def seed(engine: Engine, settings: Settings) -> None:
             repo.index_worker_id = None
             repo.index_heartbeat_at = None
             if was_indexed:
-                commit, inspection = indexed(full_name, settings.workspace_root)
-                record_analysis(db, repo, commit, inspection, base)
+                commit, found = indexed(full_name, settings.workspace_root)
+                record_analysis(db, repo, commit, found.inspection, base)
+                record_findings(db, repo, commit, found.scans, base)
             else:
                 repo.languages = []
                 repo.last_analyzed_commit = None
