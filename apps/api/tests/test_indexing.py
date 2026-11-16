@@ -14,7 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -38,7 +38,7 @@ from forgemind_api.indexing import (
 )
 from forgemind_api.inspection import inspect_tree
 from forgemind_api.leases import Heartbeat
-from forgemind_api.models import Repository, RepositoryAnalysis
+from forgemind_api.models import Repository, RepositoryAnalysis, SecurityFinding
 from forgemind_api.queue import Dispatcher
 from forgemind_api.repositories import (
     SUSPENDED,
@@ -57,6 +57,7 @@ from forgemind_api.workspace import (
     RepositoryUnavailable,
     remove,
 )
+from tests import keys
 from tests.gitrepos import commit, git, repository, write
 from tests.workers import QUIET, Flaky, Recorder, settings_for
 
@@ -846,6 +847,32 @@ def pushed(
     return done
 
 
+def findings_in(sessions: Sessions, repository_id: uuid.UUID) -> list[SecurityFinding]:
+    with sessions() as db:
+        return list(
+            db.scalars(
+                select(SecurityFinding).where(
+                    SecurityFinding.repository_id == repository_id
+                )
+            )
+        )
+
+
+def stored_anywhere(sessions: Sessions) -> str:
+    """Every row of every table, as text."""
+    with sessions() as db:
+        tables = db.scalars(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+        ).all()
+        return "".join(
+            db.scalar(
+                text(f"SELECT coalesce(json_agg(t)::text, '') FROM \"{table}\" t")
+            )
+            or ""
+            for table in tables
+        )
+
+
 def test_a_push_to_the_default_branch_has_the_repository_indexed_again(
     sessions: Sessions, settings: Settings, github: Scripted
 ) -> None:
@@ -980,6 +1007,63 @@ def test_a_push_before_a_worker_reads_the_repository_is_covered_by_that_reading(
         None,
         True,
     )
+
+
+def test_a_key_removed_from_the_branch_is_closed_at_the_commit_that_removed_it(
+    sessions: Sessions,
+    settings: Settings,
+    github: Scripted,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    key = keys.pem()
+    origin = tmp_path / "origin"
+    added = repository(
+        origin,
+        {"README.md": "# Deploys\n", "deploy/id.pem": f"# The deploy key.\n\n{key}"},
+    )
+    github.instead = CloneSource(origin.as_uri())
+    repository_id = connect(sessions, github)
+    assert index_repository(sessions, repository_id, settings, github) == "indexed"
+    [found_it] = findings_in(sessions, repository_id)
+    assert (found_it.status, found_it.commit, found_it.path, found_it.line) == (
+        "open",
+        added,
+        "deploy/id.pem",
+        3,
+    )
+    assert (found_it.rule, found_it.severity, found_it.confidence) == (
+        "private-key",
+        "high",
+        "confirmed",
+    )
+    git(origin, "rm", "-q", "deploy/id.pem")
+    removed = commit(origin, "Remove the deploy key")
+    assert pushed(sessions, Recorder(), repository_id, after=removed) == (
+        "indexing requested"
+    )
+    assert index_repository(sessions, repository_id, settings, github) == "indexed"
+    [closed] = findings_in(sessions, repository_id)
+    assert closed.id == found_it.id
+    # It points at where it was, and names the commit that no longer has it.
+    assert (closed.status, closed.commit, closed.fixed_commit) == (
+        "fixed",
+        added,
+        removed,
+    )
+    assert repository_of(sessions, repository_id).last_analyzed_commit == removed
+    # Nothing of the key was logged or stored on the way.
+    logged = "".join(
+        record.getMessage() + repr(record.__dict__) for record in caplog.records
+    )
+    assert "indexing attempt ended" in logged
+    stored = stored_anywhere(sessions)
+    assert "deploy/id.pem" in stored
+    for line in keys.body(key):
+        for part in (line, line[:24], line[-24:]):
+            assert part not in logged
+            assert part not in stored
 
 
 # --- the sweeper
