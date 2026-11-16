@@ -14,8 +14,10 @@ import pytest
 
 from forgemind_api import credentials
 from forgemind_api.credentials import TOOL, scan_credentials
+from forgemind_api.inspection import inspect_tree
 from forgemind_api.keys import Reader, read_key
 from forgemind_api.scanning import Raised, Scanned, fingerprint
+from forgemind_api.survey import survey
 from tests import keys
 
 BEGIN = keys.boundary("BEGIN", "PRIVATE KEY")
@@ -739,3 +741,30 @@ def test_no_file_takes_long_to_scan(
     # takes minutes, which one that counted lines from the top each time did.
     assert time.monotonic() - began < 10
     assert found.raised == ()
+
+
+# --- in the analysis
+
+
+def test_what_the_scan_left_out_is_among_the_analysis_concerns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(credentials, "MAX_SCAN_BYTES", 4000)
+    root = tree(
+        tmp_path,
+        {
+            "README.md": "# Thing\n",
+            "big.pem": keys.pem() + "#" * 4000,
+            "id.pem": keys.pem(keys.ed25519_key("two")),
+        },
+    )
+    found = survey(root)
+    [scan] = found.scans
+    assert scan.tool == TOOL and told(scan) == [
+        ("private-key", "id.pem", 1, "high", "confirmed")
+    ]
+    concerns = found.inspection.data["concerns"]
+    # The inspection's own concerns come first, and the scan's after them.
+    assert [item["title"] for item in concerns][-1] == NOT_SCANNED
+    assert concerns[-1] == concern(scan, NOT_SCANNED)
+    assert concerns[:-1] == inspect_tree(root).data["concerns"]
