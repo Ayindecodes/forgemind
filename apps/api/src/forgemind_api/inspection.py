@@ -334,9 +334,9 @@ class Tree:
     def first(self, *paths: str) -> str | None:
         return next((path for path in paths if path in self.sizes), None)
 
-    def read(self, path: str, limit: int = MAX_READ_BYTES) -> str | None:
-        """The start of a file as text. None if it is not one of the files
-        the scan found, or cannot be opened without following a link."""
+    def read_bytes(self, path: str, limit: int = MAX_READ_BYTES) -> bytes | None:
+        """The start of a file. None if it is not one of the files the scan
+        found, or cannot be opened without following a link."""
         if path not in self.sizes:
             return None
         try:
@@ -344,7 +344,12 @@ class Tree:
         except OSError:
             return None
         with os.fdopen(descriptor, "rb") as handle:
-            return handle.read(limit).decode("utf-8", "replace")
+            return handle.read(limit)
+
+    def read(self, path: str, limit: int = MAX_READ_BYTES) -> str | None:
+        """The start of a file as text, where `read_bytes` has one."""
+        data = self.read_bytes(path, limit)
+        return None if data is None else data.decode("utf-8", "replace")
 
     def below(self, directory: str) -> Iterator[str]:
         if not directory:
