@@ -10,15 +10,25 @@ from typing import Any
 
 import pytest
 import uvicorn
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.pool import NullPool
 
 from forgemind_api.__main__ import main
+from forgemind_api.db import alembic_config
 from forgemind_api.settings import SettingsError, load_settings
 
 # Every character of it means something in a URL.
 PASSWORD = "p@ss/w:rd#? %41"
+
+
+def newest() -> str:
+    """The newest revision there is, whichever that has come to be."""
+    scripts = ScriptDirectory.from_config(alembic_config("postgresql+psycopg://"))
+    head = scripts.get_current_head()
+    assert head is not None and head > "0005"
+    return head
 
 
 def schema(url: str) -> tuple[str, set[str]]:
@@ -72,7 +82,7 @@ def test_migrate_stops_at_the_revision_it_is_given(
     # With none, it goes on to the newest, from wherever the database is.
     assert main(["migrate"]) == 0
     revision, columns = schema(empty_database_url)
-    assert revision == "0006"
+    assert revision == newest()
     assert "event_seq" in columns
 
 
@@ -88,7 +98,7 @@ def test_migrate_reaches_a_database_whose_password_a_url_must_escape(
     url = load_settings().database_url
     assert url is not None and make_url(url).password == PASSWORD
     revision, _ = schema(url)
-    assert revision == "0006"
+    assert revision == newest()
 
 
 def test_each_command_asks_for_the_github_credentials_it_uses(
