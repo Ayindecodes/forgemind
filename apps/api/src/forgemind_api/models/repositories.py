@@ -114,6 +114,8 @@ class RepositoryAnalysis(IdMixin, Base):
 
 
 class SecurityFinding(IdMixin, Base):
+    """Something found in a repository, at the commit it was last found at."""
+
     __tablename__ = "security_findings"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -135,12 +137,19 @@ class SecurityFinding(IdMixin, Base):
     category: Mapped[str] = mapped_column(
         enum("finding_category", *FINDING_CATEGORIES), nullable=False
     )
+    # The commit `path` and `line` are a place in: the last one it was found at.
+    commit: Mapped[str] = mapped_column(Text, nullable=False)
     path: Mapped[str] = mapped_column(Text, nullable=False)
     line: Mapped[int | None] = mapped_column(Integer)
     evidence: Mapped[str] = mapped_column(Text, nullable=False, default="")
     remediation: Mapped[str] = mapped_column(Text, nullable=False, default="")
     advisory_url: Mapped[str | None] = mapped_column(Text)
     tool: Mapped[str] = mapped_column(Text, nullable=False)
+    # For a finding a scan of the repository raised: the rule it was raised
+    # under, and what tells it from every other finding on the repository, so
+    # that the next scan knows it again. Neither holds anything that was read.
+    rule: Mapped[str | None] = mapped_column(Text)
+    fingerprint: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
         enum("finding_status", "open", "fixed", "dismissed"),
         nullable=False,
@@ -149,8 +158,17 @@ class SecurityFinding(IdMixin, Base):
     detected_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    # When a scan first failed to find it again, and at which commit.
     fixed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fixed_commit: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         Index("ix_security_findings_repository_id_status", "repository_id", "status"),
+        Index(
+            "ix_security_findings_fingerprint",
+            "repository_id",
+            "fingerprint",
+            unique=True,
+            postgresql_where=text("fingerprint IS NOT NULL"),
+        ),
     )
