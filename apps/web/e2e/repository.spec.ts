@@ -183,6 +183,34 @@ test.describe('the repository detail', () => {
     await expect(page.getByTestId('analysis')).toHaveCount(0);
   });
 
+  test('shows a concern that has no evidence to point at', async ({ page }) => {
+    await page.route(/\/repositories\/repo-1\/analysis$/, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        json: {
+          ...(await response.json()),
+          concerns: [
+            {
+              title: 'The scan for credentials stopped early',
+              detail: 'It gives itself 20 seconds to read keys.',
+              evidence: [],
+            },
+          ],
+        },
+      });
+    });
+    await open(page, '/repositories/repo-1');
+    const concern = page.getByTestId('concern');
+    await expect(concern).toHaveCount(1);
+    await expect(concern).toContainText(
+      'The scan for credentials stopped early',
+    );
+    await expect(concern).toContainText(
+      'No evidence was recorded for this concern.',
+    );
+  });
+
   test('has no axe violations', async ({ page }) => {
     await open(page, '/repositories/repo-1');
     await expect(page.getByTestId('analysis')).toBeVisible();
