@@ -8,7 +8,10 @@
 #   2. a deployment builds the commit, brings an empty database to the schema
 #      and answers over HTTPS as that commit, through one door;
 #   3. a person signs in with GitHub, connects a repository and inspects it,
-#      in a browser (apps/web/staging);
+#      in a browser (apps/web/staging), and sees the private key committed to
+#      it on the Security page at its commit and line;
+#   3a. the key itself is in no row of the database and in no log, and the
+#      commit that removes it closes the finding;
 #   4. the session is kept from scripts and from plain HTTP, the session
 #      development seeds opens nothing, and what signs a person in is not
 #      written to a log;
@@ -48,7 +51,7 @@ for busy in "$edge_port" "$port"; do
   fi
 done
 command -v openssl >/dev/null || {
-  echo "openssl is needed, to make a key that stands for a GitHub App's" >&2
+  echo "openssl is needed, to make keys that stand for a GitHub App's and for one committed by mistake" >&2
   exit 1
 }
 
@@ -182,8 +185,21 @@ browser() {
     cd "$root"
     STAGING_URL=$site STAGING_OWN_CERTIFICATE=1 STAGING_REPOSITORY=$repository \
       STAGING_REPOSITORY_COMMIT=$commit STAGING_REPOSITORY_SHOWS=TypeScript,hono \
+      STAGING_FINDING=$finding STAGING_FINDING_COMMIT=$found_at STAGING_FINDING_FIXED=$fixed_at \
       pnpm --filter @forgemind/web exec playwright test -c playwright.staging.config.ts --reporter=line
   )
+}
+
+# The person's findings as the API lists them for the session in the jar.
+findings() {
+  ask -b "$jar" "$site/api/findings" |
+    json 'data.items.map((f) => [`${f.location.path}:${f.location.line}`, f.status, f.commit, f.fixedCommit ?? "-", f.severity, f.confidence].join(" ")).join(", ")'
+}
+
+# A field of the person's repository, as the API serves it.
+repository_field() {
+  ask -b "$jar" "$site/api/repositories" |
+    json "data.items.find((r) => r.fullName === '$repository').$1"
 }
 
 # Signs Sam Rivera in the way the pages do, with curl, so that the cookie
@@ -260,11 +276,13 @@ cat "$dir/secrets/postgres_password" >>"$private"
 echo "$dir: closed, with a password of ${#password} characters for the database"
 
 # A repository of this machine's for the person to connect: the simulated
-# provider lists what the deployment's `repositories` directory holds.
+# provider lists what the deployment's `repositories` directory holds. It has
+# a private key committed, made now and used for nothing.
 (
   umask 022
-  mkdir -p "$work/source/src" "$work/source/tests" "$dir/repositories/${repository%/*}"
+  mkdir -p "$work/source/src" "$work/source/tests" "$work/source/deploy" "$dir/repositories/${repository%/*}"
   cd "$work/source"
+  { printf '# The key releases are copied to the server with.\n'; openssl genpkey -algorithm ed25519; } >deploy/id.pem
   cat >package.json <<'EOF'
 {
   "name": "sample",
@@ -283,6 +301,11 @@ EOF
   git clone -q --bare "$work/source" "$dir/repositories/$repository.git"
 )
 commit=$(git -C "$work/source" rev-parse HEAD)
+# Where the key is, and its lines, which must stay where they were put.
+finding=deploy/id.pem:2 found_at=$commit fixed_at=
+grep -v -e '^-----' -e '^#' "$work/source/deploy/id.pem" >"$work/key"
+[[ $(wc -l <"$work/key") == 1 && $(wc -c <"$work/key") -gt 40 ]] || fail "the key is not as expected"
+cat "$work/key" >>"$private"
 
 echo "## a deployment builds the commit, migrates an empty database and serves it"
 deploy
@@ -373,6 +396,42 @@ if has_logged api '"logger": "uvicorn.access"'; then
 fi
 kept_private
 echo "the cookie: HttpOnly, Secure, SameSite=lax; the code and the session: in no log"
+
+echo "## the committed key is a finding at its commit and line, kept nowhere, and closed by the commit that removes it"
+[[ $(findings) == "$finding open $commit - high confirmed" ]] || fail "the findings are: $(findings)"
+[[ $(repository_field openFindings) == 1 ]] || fail "the repository counts $(repository_field openFindings) open findings"
+"$staging" compose exec -T postgres pg_dump -U forgemind forgemind >"$work/dump.sql" ||
+  fail "the database could not be dumped"
+grep -qF "${finding%:*}" "$work/dump.sql" || fail "the database holds no finding"
+if grep -qF -f "$work/key" "$work/dump.sql"; then
+  fail "the database holds the key"
+fi
+rm "$work/dump.sql"
+kept_private
+(
+  cd "$work/source"
+  git rm -q deploy/id.pem
+  git -c user.name='Staging check' -c user.email=staging-check@example.com -c commit.gpgsign=false \
+    commit -q -m 'Remove the deploy key'
+  git push -q "$dir/repositories/$repository.git" main
+)
+removed=$(git -C "$work/source" rev-parse HEAD)
+# The simulated GitHub sends no pushes: the repository is connected again,
+# which reads it again, as the push to its default branch would.
+id=$(repository_field id)
+github_id=$(repository_field githubId)
+[[ $(status_of -b "$jar" -X DELETE "$site/api/repositories/$id") == 200 ]] ||
+  fail "the repository could not be disconnected"
+[[ $(status_of -b "$jar" -H 'content-type: application/json' \
+  -d "{\"githubId\": $github_id, \"fullName\": \"$repository\"}" "$site/api/repositories") == 201 ]] ||
+  fail "the repository could not be connected again"
+[[ $(repository_field id) == "$id" ]] || fail "connected again, the repository is another record"
+indexed_again() { [[ $(repositories) == "$repository connected $removed" ]]; }
+wait_until "the repository indexed at $removed" 60 indexed_again
+[[ $(findings) == "$finding fixed $commit $removed high confirmed" ]] || fail "the findings are: $(findings)"
+[[ $(repository_field openFindings) == 0 ]] || fail "the repository counts $(repository_field openFindings) open findings"
+echo "${finding} at ${commit:0:7}: open, and closed at ${removed:0:7}; the key in no row and no log"
+commit=$removed fixed_at=$removed
 
 echo "## a deployment takes a database that is behind forward, and keeps what it held"
 newest=$(revision)
