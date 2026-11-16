@@ -60,16 +60,33 @@ test.describe('the repository detail', () => {
     page,
   }) => {
     await open(page, '/repositories/repo-1');
-    const findings = await fetchJson<{ items: unknown[] }>(
-      page,
-      '/findings?repositoryId=repo-1&limit=200',
-    );
+    const findings = await fetchJson<{
+      items: {
+        commit: string;
+        location: { path: string; line: number | null };
+      }[];
+    }>(page, '/findings?repositoryId=repo-1&limit=200');
     const tasks = await fetchJson<{ items: { id: string }[] }>(
       page,
       '/tasks?repositoryId=repo-1&limit=50',
     );
     await expect(page.getByTestId('repository-findings')).toContainText(
       `Findings (${findings.items.length})`,
+    );
+    // Each opens at the commit it was found at, which for a fixed one is not
+    // the commit the repository is indexed at now.
+    const links = page.getByTestId('finding-location');
+    await expect(links).toHaveCount(findings.items.length);
+    expect(new Set(findings.items.map(({ commit }) => commit)).size).toBe(2);
+    expect(
+      await links.evaluateAll((all) =>
+        all.map((link) => link.getAttribute('href')),
+      ),
+    ).toEqual(
+      findings.items.map(
+        ({ commit, location }) =>
+          `https://github.com/forgemind/api/blob/${commit}/${location.path}#L${location.line}`,
+      ),
     );
     await expect(page.getByTestId('repository-tasks')).toContainText(
       `Task history (${tasks.items.length})`,

@@ -222,11 +222,19 @@ export function RepositoryDetail({ id }: { id: string }) {
                     </Badge>
                     <span className="font-medium">{finding.title}</span>
                     <Badge>{finding.status}</Badge>
+                    {finding.fixedCommit && (
+                      <span className="text-xs text-fg-muted">
+                        no longer found at{' '}
+                        <span className="font-mono">
+                          {shortCommit(finding.fixedCommit)}
+                        </span>
+                      </span>
+                    )}
                   </span>
                   <a
                     href={codeHref(
                       repo,
-                      repo.lastAnalyzedCommit ?? repo.defaultBranch,
+                      finding.commit,
                       finding.location.path,
                       finding.location.line,
                     )}
@@ -237,7 +245,8 @@ export function RepositoryDetail({ id }: { id: string }) {
                   >
                     {finding.location.path}
                     {finding.location.line !== null &&
-                      `:${finding.location.line}`}
+                      `:${finding.location.line}`}{' '}
+                    at {shortCommit(finding.commit)}
                   </a>
                 </li>
               ))}
