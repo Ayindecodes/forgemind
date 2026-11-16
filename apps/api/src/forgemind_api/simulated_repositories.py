@@ -11,8 +11,12 @@ a repository has the same commit wherever it is made."""
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from pathlib import Path
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
 # Who commits a simulated repository, and when. Fixed, so the commit is too.
 IDENTITY = {
@@ -23,6 +27,24 @@ IDENTITY = {
     "GIT_COMMITTER_EMAIL": "simulated@forgemind.invalid",
     "GIT_COMMITTER_DATE": "2026-10-01T09:00:00+00:00",
 }
+
+
+def committed_key(of: str) -> str:
+    """A private key for a simulated repository to have committed, which is
+    the mistake the scan for credentials is there to find.
+
+    It is a real key, so that what the scan says of it is what it would say
+    of any, and it is the key to nothing: it is worked out from its name, the
+    same every time, so the commit that holds it stays the same too. It is
+    made here and not written here, so that this file holds no key."""
+    seed = hashlib.sha256(f"forgemind simulated key: {of}".encode()).digest()
+    key = ed25519.Ed25519PrivateKey.from_private_bytes(seed)
+    return key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode("ascii")
+
 
 PNPM_LOCK = """\
 lockfileVersion: '9.0'
@@ -701,6 +723,9 @@ on it inside a sandbox, and reports what happened.
 
     uv sync
     uv run forgemind-workers
+
+A release is copied to the staging host over SSH, with the key in
+`deploy/staging.pem`.
 """,
     "pyproject.toml": """\
 [project]
@@ -975,6 +1000,7 @@ def test_attempts_are_spaced_out_up_to_a_ceiling() -> None:
     assert budget.delay_before(2) == 0.5
     assert budget.delay_before(40) == 60
 """,
+    "deploy/staging.pem": committed_key("forgemind/workers deploy/staging.pem"),
 }
 
 ACME_PAYMENTS = {

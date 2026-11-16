@@ -8,9 +8,13 @@ from typing import Any
 
 import pytest
 
+from forgemind_api import simulated_repositories
+from forgemind_api.credentials import TOOL
 from forgemind_api.github import SIMULATED_ACCOUNTS
 from forgemind_api.inspection import inspect_tree
-from forgemind_api.simulated_repositories import TREES, materialise
+from forgemind_api.simulated_repositories import TREES, committed_key, materialise
+from forgemind_api.survey import survey
+from tests import keys
 from tests.gitrepos import git
 
 # The commit `forgemind/api` is, on any machine, for as long as its files and
@@ -97,6 +101,20 @@ FOUND: dict[str, tuple[str, list[str], list[tuple[str, str]], list[str], list[st
         ["composer test"],
         [],
     ),
+}
+
+# What the scans raise in each that raises anything: the scanner, the rule,
+# where and what.
+RAISED: dict[str, list[tuple[str, str, str, int | None, str]]] = {
+    "forgemind/workers": [
+        (
+            TOOL,
+            "private-key",
+            "deploy/staging.pem",
+            1,
+            "Ed25519 private key committed",
+        )
+    ],
 }
 
 
@@ -221,3 +239,29 @@ def test_a_repository_without_tests_or_a_lockfile_is_said_to_be_so(
         "Dependencies are not pinned by a lockfile",
     ]
     assert concerns[1]["evidence"] == [{"path": "composer.json", "line": 4}]
+
+
+@pytest.mark.parametrize("full_name", sorted(TREES))
+def test_what_the_scans_raise_in_each(full_name: str, tmp_path: Path) -> None:
+    """One repository has a key committed, for the scan for credentials to
+    find; nothing else in any of them is raised."""
+    repository = tmp_path / "repository"
+    materialise(full_name, repository)
+    found = survey(repository)
+    raised = [
+        (scanned.tool, item.rule, item.path, item.line, item.title)
+        for scanned in found.scans
+        for item in scanned.raised
+    ]
+    assert raised == RAISED.get(full_name, [])
+    assert all(not scanned.unread and not scanned.cut_short for scanned in found.scans)
+
+
+def test_the_committed_key_is_made_here_and_written_nowhere_in_this_source() -> None:
+    key = committed_key("forgemind/workers deploy/staging.pem")
+    assert TREES["forgemind/workers"]["deploy/staging.pem"] == key
+    assert key == committed_key("forgemind/workers deploy/staging.pem")
+    assert key != committed_key("another")
+    source = Path(simulated_repositories.__file__).read_text()
+    for line in keys.body(key):
+        assert line not in source

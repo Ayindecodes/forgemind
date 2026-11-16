@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
 
 from forgemind_api.app import create_app
@@ -21,12 +21,16 @@ from forgemind_api.models import Organization, Repository, SecurityFinding
 from forgemind_api.scanning import Raised, Scanned, Severity
 from forgemind_api.seed import seed
 from forgemind_api.settings import Settings
+from forgemind_api.simulated_repositories import committed_key
+from tests import keys
 from tests.helpers import newcomer
 
 OWNER = {"cookie": "fm_session=dev-owner"}
 WEB = "http://localhost:3200"
 FIRST, SECOND, THIRD = "a" * 40, "b" * 40, "c" * 40
 AT = datetime(2026, 11, 1, 9, tzinfo=UTC)
+# The key the seeded `forgemind/workers` has committed.
+SEEDED_KEY = committed_key("forgemind/workers deploy/staging.pem")
 
 
 def raised(
@@ -302,6 +306,83 @@ def findings(
     return items
 
 
+def test_a_key_committed_to_a_repository_is_listed_at_its_commit_and_line(
+    client: TestClient,
+) -> None:
+    connected = repositories(client, OWNER)
+    workers = connected["forgemind/workers"]
+    [finding] = findings(client, OWNER, repositoryId=workers["id"])
+    assert set(finding) == {
+        "id",
+        "repositoryId",
+        "runId",
+        "title",
+        "severity",
+        "confidence",
+        "category",
+        "commit",
+        "location",
+        "evidence",
+        "remediation",
+        "advisoryUrl",
+        "tool",
+        "status",
+        "fixedCommit",
+        "detectedAt",
+    }
+    assert finding["repositoryId"] == workers["id"]
+    assert finding["commit"] == workers["lastAnalyzedCommit"]
+    assert finding["location"] == {"path": "deploy/staging.pem", "line": 1}
+    assert finding["title"] == "Ed25519 private key committed"
+    assert (finding["severity"], finding["confidence"], finding["category"]) == (
+        "high",
+        "confirmed",
+        "exposed_credential",
+    )
+    assert (finding["tool"], finding["status"]) == (TOOL, "open")
+    assert finding["runId"] is None and finding["fixedCommit"] is None
+    assert finding["advisoryUrl"] is None
+    assert finding["detectedAt"].endswith("Z")
+    # The repository's count is of the same findings.
+    assert {name: repo["openFindings"] for name, repo in connected.items()} == {
+        name: 1 if name == "forgemind/workers" else 0 for name in connected
+    }
+
+
+def test_the_key_itself_is_served_and_stored_nowhere(
+    client: TestClient, engine: Engine
+) -> None:
+    secret = keys.body(SEEDED_KEY)
+    assert len(secret) >= 1
+    workers = repositories(client, OWNER)["forgemind/workers"]
+    served = "".join(
+        client.get(path, headers=OWNER).text
+        for path in (
+            "/findings",
+            "/repositories",
+            f"/repositories/{workers['id']}",
+            f"/repositories/{workers['id']}/analysis",
+        )
+    )
+    with engine.connect() as connection:
+        tables = connection.scalars(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+        ).all()
+        assert "security_findings" in tables
+        stored = "".join(
+            connection.scalar(
+                text(f"SELECT coalesce(json_agg(t)::text, '') FROM \"{table}\" t")
+            )
+            or ""
+            for table in tables
+        )
+    assert "deploy/staging.pem" in stored and "deploy/staging.pem" in served
+    for line in secret:
+        for part in (line, line[:24], line[-24:]):
+            assert part not in served
+            assert part not in stored
+
+
 def organization_of(client: TestClient, headers: dict[str, str]) -> uuid.UUID:
     return uuid.UUID(client.get("/organization", headers=headers).json()["id"])
 
@@ -444,7 +525,7 @@ def test_one_organization_never_sees_anothers_findings(
     workers = repositories(client, OWNER)["forgemind/workers"]
     theirs = findings(client, riley)
     ours = findings(client, OWNER)
-    assert len(theirs) == 5
+    assert len(theirs) == 5 and ours
     assert {item["repositoryId"] for item in theirs} == set(ids.values())
     assert not {item["id"] for item in theirs} & {item["id"] for item in ours}
     assert findings(client, riley, repositoryId=workers["id"]) == []
