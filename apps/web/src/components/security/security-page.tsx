@@ -24,7 +24,7 @@ import {
 } from '@/lib/findings';
 import { formatRelative } from '@/lib/format';
 import { useRepositories } from '@/lib/queries';
-import { codeHref } from '@/lib/repositories';
+import { codeHref, shortCommit } from '@/lib/repositories';
 
 /*
  * Every finding across the organisation's repositories. Confirmed findings
@@ -263,10 +263,12 @@ function FindingCard({
   tone: BadgeTone;
 }) {
   const location = `${finding.location.path}${finding.location.line !== null ? `:${finding.location.line}` : ''}`;
+  // At the commit the finding was last found at: the line is a line of that
+  // commit, whatever the repository has been indexed at since.
   const href = repository
     ? codeHref(
         repository,
-        repository.lastAnalyzedCommit ?? repository.defaultBranch,
+        finding.commit,
         finding.location.path,
         finding.location.line,
       )
@@ -286,6 +288,14 @@ function FindingCard({
           {confidenceLabels[finding.confidence]}
         </Badge>
         {finding.status !== 'open' && <Badge>{finding.status}</Badge>}
+        {finding.fixedCommit && (
+          <span className="text-xs text-fg-muted" data-testid="fixed-commit">
+            no longer found at{' '}
+            <span className="font-mono">
+              {shortCommit(finding.fixedCommit)}
+            </span>
+          </span>
+        )}
       </div>
       <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[7rem_minmax(0,1fr)]">
         <Term>Where</Term>
@@ -312,7 +322,11 @@ function FindingCard({
             <span className="font-mono text-xs">{location}</span>
           )}
           <span className="text-xs text-fg-muted">
-            {categoryLabels[finding.category]}, by {finding.tool},{' '}
+            at{' '}
+            <span className="font-mono" data-testid="finding-commit">
+              {shortCommit(finding.commit)}
+            </span>
+            . {categoryLabels[finding.category]}, by {finding.tool},{' '}
             {formatRelative(finding.detectedAt)}
           </span>
         </dd>

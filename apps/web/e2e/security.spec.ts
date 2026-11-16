@@ -14,6 +14,8 @@ type Served = {
   severity: string;
   advisoryUrl: string | null;
   repositoryId: string;
+  commit: string;
+  fixedCommit: string | null;
 };
 
 test.describe('security', () => {
@@ -71,12 +73,16 @@ test.describe('security', () => {
     await expect(
       page.getByTestId(`finding-${withAdvisory!.id}`).getByTestId('advisory'),
     ).toHaveAttribute('href', withAdvisory!.advisoryUrl!);
+    const second = served.items.find(({ id }) => id === 'finding-2')!;
     await expect(
       page.getByTestId('finding-finding-2').getByTestId('finding-code'),
     ).toHaveAttribute(
       'href',
-      /github\.com\/forgemind\/api\/blob\/.+\/package\.json#L22$/,
+      `https://github.com/forgemind/api/blob/${second.commit}/package.json#L22`,
     );
+    await expect(
+      page.getByTestId('finding-finding-2').getByTestId('finding-commit'),
+    ).toHaveText(second.commit.slice(0, 7));
 
     await page.getByTestId('finding-severity-filter').click();
     await page.getByRole('option', { name: 'critical' }).click();
@@ -104,6 +110,19 @@ test.describe('security', () => {
     await page.getByRole('option', { name: 'All repositories' }).click();
     await expect(page.getByTestId('finding-count')).toHaveText(
       `${served.items.length} of ${served.items.length}`,
+    );
+
+    // A fixed finding opens where it was last found, which is not where the
+    // repository is now, and names the commit that no longer has it.
+    const fixed = served.items.find(({ fixedCommit }) => fixedCommit)!;
+    expect(fixed.commit).not.toBe(fixed.fixedCommit);
+    const card = page.getByTestId(`finding-${fixed.id}`);
+    await expect(card.getByTestId('finding-code')).toHaveAttribute(
+      'href',
+      new RegExp(`/blob/${fixed.commit}/`),
+    );
+    await expect(card.getByTestId('fixed-commit')).toHaveText(
+      `no longer found at ${fixed.fixedCommit!.slice(0, 7)}`,
     );
   });
 
