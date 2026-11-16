@@ -17,6 +17,8 @@ const finding = (
   severity,
   confidence,
   category: 'other',
+  commit: 'c0ffee1',
+  fixedCommit: null,
   location: { path: `src/${id}.ts`, line: 1 },
   evidence: confidence === 'confirmed' ? 'Seen in the code.' : '',
   remediation: 'Fix it.',

@@ -742,9 +742,20 @@ export function seedStore(store: Store, seed: number) {
 
   type FindingSeed = Omit<
     Finding,
-    'id' | 'repositoryId' | 'status' | 'detectedAt' | 'runId'
+    | 'id'
+    | 'repositoryId'
+    | 'commit'
+    | 'status'
+    | 'fixedCommit'
+    | 'detectedAt'
+    | 'runId'
   > &
-    Partial<Pick<Finding, 'status' | 'detectedAt' | 'runId'>>;
+    Partial<
+      Pick<
+        Finding,
+        'commit' | 'status' | 'fixedCommit' | 'detectedAt' | 'runId'
+      >
+    >;
   const finding = (
     id: string,
     repositoryId: string,
@@ -752,7 +763,11 @@ export function seedStore(store: Store, seed: number) {
   ): Finding => ({
     id,
     repositoryId,
+    // Found at the commit its repository was last analysed at.
+    commit:
+      data.repositories.get(repositoryId)?.lastAnalyzedCommit ?? 'c0ffee1',
     status: 'open',
+    fixedCommit: null,
     detectedAt: at(40),
     runId: null,
     ...partial,
@@ -892,7 +907,10 @@ export function seedStore(store: Store, seed: number) {
       remediation: 'Use crypto.timingSafeEqual.',
       advisoryUrl: null,
       tool: 'semgrep',
+      // Last found at an earlier commit, and gone at the one indexed now.
+      commit: '4f0e9d2',
       status: 'fixed',
+      fixedCommit: 'c0ffee1',
     }),
     // A finding the scanner raised without capturing evidence, on a line the
     // patch does not touch. The review workspace has to say both things.

@@ -28,6 +28,8 @@ export const Finding = z.object({
   severity: Severity,
   confidence: Confidence,
   category: FindingCategory,
+  /** The commit the location is in: the last one it was found at. */
+  commit: z.string().min(1),
   location: z.object({
     path: z.string().min(1),
     line: z.int().min(1).nullable(),
@@ -38,6 +40,11 @@ export const Finding = z.object({
   /** The scanner or agent that raised it. */
   tool: z.string().min(1),
   status: z.enum(['open', 'fixed', 'dismissed']),
+  /**
+   * The first commit indexed that no longer had it. Null while it is open,
+   * and where no commit is known to have closed it.
+   */
+  fixedCommit: z.string().min(1).nullable(),
   detectedAt: Timestamp,
 });
 
