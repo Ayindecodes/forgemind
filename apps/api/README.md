@@ -144,6 +144,72 @@ against real git, the latter over git's own HTTP server.
 claim and its outcomes, and `tests/test_indexing_recovery.py` real workers
 killed while indexing.
 
+## Findings
+
+After the inspection, the same checkout is scanned (`src/forgemind_api/survey.py`),
+and what a scan raises is stored as a finding at the commit and the line it
+was found at. `GET /findings` lists the organization's findings, the most
+severe first, filtered by `repositoryId`, `severity` and `status`; a
+repository's `openFindings` counts the same rows. Findings on a repository
+that was disconnected are kept and are neither listed nor counted, since
+nothing keeps them up to date.
+
+Each time a repository is indexed, its findings are brought up to date
+(`src/forgemind_api/findings.py`). Found again, a finding stays the one row,
+moved to the commit and line it is at now. No longer found, it is `fixed`,
+with `fixedCommit` the first commit indexed without it, and it keeps pointing
+at where it was last seen. Found again after that, it is open again. A
+dismissed finding stays dismissed. A file the scan could not read, and every
+file of a scan that stopped early, closes nothing.
+
+A repository is indexed again when its default branch moves: a signed `push`
+delivery for a connected repository's default branch, not deleting it and
+not at the commit already indexed, asks for a worker as connecting does. The
+analysis indexed before is served meanwhile, and tasks start from its commit.
+A push that arrives while a worker reads the repository does not interrupt
+it: that worker finishes, and the repository is then read once more. A
+suspended installation's pushes are ignored. The GitHub App has to be
+subscribed to the Push event for any of this; the simulated provider sends
+no deliveries, so there a repository is read again by disconnecting and
+connecting it.
+
+The first scanner looks for committed credentials
+(`src/forgemind_api/credentials.py`), in every directory but `.git`:
+
+| Rule                    | What was read                                                         | Severity | Confidence |
+| ----------------------- | --------------------------------------------------------------------- | -------- | ---------- |
+| `private-key`           | a block with RFC 7468's private key boundaries that loads as a key    | high     | confirmed  |
+| `encrypted-private-key` | such a block that asks for a passphrase                               | medium   | likely     |
+| `unread-private-key`    | such a block that could not be read as a key, or not within 5 seconds | medium   | suspected  |
+| `github-token`          | a prefix GitHub documents for its tokens, then at least 30 characters | high     | likely     |
+
+A credential under a directory of tests, examples or dependencies is rated
+low and says why. Keys are read with the `cryptography` package in a child
+process of the worker's (`src/forgemind_api/keys.py`) that is given nothing
+of the server's environment, which reads each key within 5 seconds and all of
+them within 20, so a file written to make a loader slow costs no more than
+that. The token rule after the prefix is this scanner's own: GitHub documents
+the prefixes and not what follows them. Nothing found is tried anywhere.
+
+Nothing of a credential is copied: not into the database, a log or a
+response. A finding holds where it is, what kind it is, a digest to know it
+again by and, for a key that loads, the SSH fingerprint of its public half.
+
+What it does not find: keys in a binary form (DER, PKCS #12, a Java
+keystore), a PEM file encoded once more (as a Kubernetes secret holds one),
+keys written other than as their own lines or the lines of a quoted string,
+and anything only in the history, since one commit is read. Files over
+5 MB, files with more than 20 findings or 200 key beginnings, and files with
+a key slower than 5 seconds to read are named in a concern on the analysis,
+and a scan that stops early says so there too. Nothing dismisses a finding
+yet.
+
+`tests/test_credentials.py` and `tests/test_keys.py` cover the scan with
+keys made when the tests run (`tests/keys.py`: no key is written in this
+repository, which is scanned too), `tests/test_findings.py` the reconciling
+and the list, and `tests/test_indexing.py` pushes and a key removed by a
+later commit.
+
 ## Usage
 
 Usage is what the events say was used. Recording an event also enters what
